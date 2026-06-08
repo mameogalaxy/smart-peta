@@ -1,20 +1,18 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter, HashRouter } from 'react-router-dom'
+import { HashRouter } from 'react-router-dom'
 import './index.css'
 import App from './App.tsx'
 import { StoreProvider } from './lib/store.tsx'
 
-// 単体HTML(file://)で開いた場合は履歴APIが使えないため HashRouter にフォールバック。
-// 通常のホスティング/開発時は綺麗なURLの BrowserRouter を使う。
-const Router = window.location.protocol === 'file:' ? HashRouter : BrowserRouter
-
+// HashRouter を採用：GitHub Pages のサブパス・単体HTML(file://)・任意の静的ホストの
+// どこでも、SPAフォールバック不要でディープリンク(QRの /d/:id)まで動く。
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <Router>
+    <HashRouter>
       <StoreProvider>
         <App />
       </StoreProvider>
-    </Router>
+    </HashRouter>
   </StrictMode>,
 )
