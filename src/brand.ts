@@ -1,0 +1,13 @@
+// アプリのアイコンをインラインのデータURLとして持つ。
+// 単体HTML(file://)で開いたときも /icon.svg に依存せず表示できるようにするため。
+const SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#34d399"/><stop offset="1" stop-color="#0ea5e9"/></linearGradient></defs>
+<rect width="512" height="512" rx="112" fill="url(#g)"/>
+<rect x="150" y="96" width="212" height="320" rx="34" fill="#ffffff"/>
+<line x1="150" y1="206" x2="362" y2="206" stroke="#0ea5e9" stroke-width="14"/>
+<rect x="318" y="138" width="16" height="44" rx="8" fill="#34d399"/>
+<rect x="318" y="240" width="16" height="60" rx="8" fill="#34d399"/>
+<g transform="translate(196 250)"><rect width="120" height="120" rx="12" fill="#0f172a"/><rect x="18" y="18" width="30" height="30" fill="#fff"/><rect x="72" y="18" width="30" height="30" fill="#fff"/><rect x="18" y="72" width="30" height="30" fill="#fff"/><rect x="78" y="78" width="18" height="18" fill="#34d399"/></g>
+</svg>`
+
+export const ICON_SRC = `data:image/svg+xml;utf8,${encodeURIComponent(SVG)}`

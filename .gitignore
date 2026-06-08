@@ -31,3 +31,7 @@ pnpm-debug.log*
 # misc
 node_modules/.tmp/
 .tmp/
+
+# single-file build / generated preview
+dist-single/
+/スマートペタ.html

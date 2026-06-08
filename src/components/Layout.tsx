@@ -3,6 +3,7 @@ import { CalendarIcon, CameraIcon, CartIcon, DocIcon, HomeIcon, MealIcon, Settin
 import { useStore } from '../lib/store'
 import { useState, type ReactNode } from 'react'
 import { ScanSheet } from './ScanSheet'
+import { ICON_SRC } from '../brand'
 
 const NAV = [
   { to: '/', label: 'ホーム', Icon: HomeIcon, end: true },
@@ -59,7 +60,7 @@ export function Layout() {
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
         <div className="flex items-center justify-between px-4 py-3">
           <NavLink to="/" className="flex items-center gap-2">
-            <img src="/icon.svg" alt="" className="h-8 w-8 rounded-lg" />
+            <img src={ICON_SRC} alt="" className="h-8 w-8 rounded-lg" />
             <div className="leading-tight">
               <div className="text-base font-extrabold tracking-tight text-slate-800">
                 スマートペタ

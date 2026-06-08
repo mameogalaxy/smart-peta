@@ -1,5 +1,6 @@
 import { Link, useParams } from 'react-router-dom'
 import { useStore } from '../lib/store'
+import { ICON_SRC } from '../brand'
 import { DOC_CATEGORIES } from '../types'
 import { formatJpDate } from '../lib/util'
 
@@ -16,7 +17,7 @@ export function DocView() {
   if (!doc) {
     return (
       <div className="mx-auto flex min-h-screen max-w-lg flex-col items-center justify-center gap-3 p-6 text-center">
-        <img src="/icon.svg" alt="" className="h-14 w-14 rounded-xl" />
+        <img src={ICON_SRC} alt="" className="h-14 w-14 rounded-xl" />
         <h1 className="text-lg font-bold text-slate-700">書類が見つかりません</h1>
         <p className="text-sm text-slate-400">
           この端末にデータがないか、削除された可能性があります。
@@ -33,7 +34,7 @@ export function DocView() {
   return (
     <div className="mx-auto min-h-screen max-w-lg bg-slate-100">
       <header className="flex items-center gap-2 border-b border-slate-200 bg-white px-4 py-3">
-        <img src="/icon.svg" alt="" className="h-8 w-8 rounded-lg" />
+        <img src={ICON_SRC} alt="" className="h-8 w-8 rounded-lg" />
         <div className="text-sm font-extrabold text-slate-800">スマートペタ</div>
         <span className="ml-auto rounded-full px-2 py-0.5 text-xs font-bold" style={{ color: cat?.color, backgroundColor: `${cat?.color}1a` }}>
           {cat?.emoji} {cat?.label}
