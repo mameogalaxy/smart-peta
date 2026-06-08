@@ -1,0 +1,285 @@
+import { useMemo, useState } from 'react'
+import { useStore } from '../lib/store'
+import { Card, Badge, Button, Modal, Field, inputClass, EmptyState } from '../components/ui'
+import { DOC_CATEGORIES, type CalendarEvent, type DocCategory } from '../types'
+import { formatJpDate, parseISO, relativeDays, todayISO, uid } from '../lib/util'
+import { BellIcon, CalendarIcon, CheckIcon, PlusIcon, TrashIcon } from '../components/icons'
+
+const WEEK = ['日', '月', '火', '水', '木', '金', '土']
+
+export function Calendar() {
+  const { state, addEvent, updateEvent, removeEvent } = useStore()
+  const today = todayISO()
+  const [cursor, setCursor] = useState(() => {
+    const d = new Date()
+    return { y: d.getFullYear(), m: d.getMonth() }
+  })
+  const [selected, setSelected] = useState<string>(today)
+  const [adding, setAdding] = useState(false)
+
+  const eventsByDate = useMemo(() => {
+    const map = new Map<string, CalendarEvent[]>()
+    for (const e of state.events) {
+      if (!map.has(e.date)) map.set(e.date, [])
+      map.get(e.date)!.push(e)
+    }
+    return map
+  }, [state.events])
+
+  const cells = useMemo(() => buildMonth(cursor.y, cursor.m), [cursor])
+  const dayEvents = (eventsByDate.get(selected) ?? []).sort((a, b) =>
+    (a.time ?? '99').localeCompare(b.time ?? '99'),
+  )
+
+  function shift(delta: number) {
+    setCursor((c) => {
+      const m = c.m + delta
+      return { y: c.y + Math.floor(m / 12), m: ((m % 12) + 12) % 12 }
+    })
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card className="p-3">
+        <div className="mb-2 flex items-center justify-between px-1">
+          <button onClick={() => shift(-1)} className="rounded-lg px-3 py-1 text-slate-400 active:bg-slate-100">‹</button>
+          <div className="font-extrabold text-slate-800">
+            {cursor.y}年 {cursor.m + 1}月
+          </div>
+          <button onClick={() => shift(1)} className="rounded-lg px-3 py-1 text-slate-400 active:bg-slate-100">›</button>
+        </div>
+        <div className="grid grid-cols-7 text-center">
+          {WEEK.map((w, i) => (
+            <div key={w} className={`pb-1 text-[11px] font-bold ${i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : 'text-slate-400'}`}>
+              {w}
+            </div>
+          ))}
+          {cells.map((cell) => {
+            if (!cell) return <div key={Math.random()} />
+            const evs = eventsByDate.get(cell.iso) ?? []
+            const isToday = cell.iso === today
+            const isSel = cell.iso === selected
+            return (
+              <button
+                key={cell.iso}
+                onClick={() => setSelected(cell.iso)}
+                className={`relative mx-auto my-0.5 flex h-10 w-10 flex-col items-center justify-center rounded-xl text-sm transition ${
+                  isSel ? 'bg-brand-500 text-white' : isToday ? 'bg-brand-50 text-brand-700 font-bold' : 'text-slate-700'
+                }`}
+              >
+                {cell.day}
+                {evs.length > 0 && (
+                  <span className="absolute bottom-1 flex gap-0.5">
+                    {evs.slice(0, 3).map((e, i) => {
+                      const c = DOC_CATEGORIES.find((x) => x.id === e.category)
+                      return (
+                        <span
+                          key={i}
+                          className="h-1 w-1 rounded-full"
+                          style={{ backgroundColor: isSel ? '#fff' : c?.color }}
+                        />
+                      )
+                    })}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </Card>
+
+      <div className="flex items-center justify-between">
+        <h2 className="font-bold text-slate-700">{formatJpDate(selected)} の予定</h2>
+        <Button variant="soft" onClick={() => setAdding(true)}>
+          <PlusIcon width={18} height={18} /> 追加
+        </Button>
+      </div>
+
+      {dayEvents.length === 0 ? (
+        <EmptyState icon={<CalendarIcon width={36} height={36} />} title="この日の予定はありません" />
+      ) : (
+        <div className="space-y-2">
+          {dayEvents.map((e) => (
+            <EventRow
+              key={e.id}
+              e={e}
+              member={state.family.find((f) => f.id === e.assignee)?.emoji}
+              onToggleDone={() => updateEvent(e.id, { done: !e.done })}
+              onToggleRemind={() => updateEvent(e.id, { remind: !e.remind })}
+              onDelete={() => removeEvent(e.id)}
+            />
+          ))}
+        </div>
+      )}
+
+      {adding && (
+        <AddEventModal
+          date={selected}
+          family={state.family}
+          onClose={() => setAdding(false)}
+          onSave={(e) => {
+            addEvent(e)
+            setAdding(false)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function EventRow({
+  e,
+  member,
+  onToggleDone,
+  onToggleRemind,
+  onDelete,
+}: {
+  e: CalendarEvent
+  member?: string
+  onToggleDone: () => void
+  onToggleRemind: () => void
+  onDelete: () => void
+}) {
+  const cat = DOC_CATEGORIES.find((c) => c.id === e.category)
+  return (
+    <Card className="flex items-center gap-3 p-3">
+      <button
+        onClick={onToggleDone}
+        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 transition ${
+          e.done ? 'border-brand-500 bg-brand-500 text-white' : 'border-slate-300 text-transparent'
+        }`}
+      >
+        <CheckIcon width={16} height={16} />
+      </button>
+      <div className="min-w-0 flex-1">
+        <p className={`truncate font-semibold ${e.done ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
+          {e.title}
+        </p>
+        <div className="flex items-center gap-2 text-xs text-slate-400">
+          <Badge color={cat?.color}>{cat?.label}</Badge>
+          {e.time && <span>{e.time}</span>}
+          <span>{relativeDays(e.date)}</span>
+          {member && <span>{member}</span>}
+          {e.note && <span className="truncate">・{e.note}</span>}
+        </div>
+      </div>
+      <button onClick={onToggleRemind} className={`p-1.5 ${e.remind ? 'text-amber-500' : 'text-slate-300'}`}>
+        <BellIcon width={18} height={18} />
+      </button>
+      <button onClick={onDelete} className="p-1.5 text-slate-300 active:text-red-500">
+        <TrashIcon width={18} height={18} />
+      </button>
+    </Card>
+  )
+}
+
+function AddEventModal({
+  date,
+  family,
+  onClose,
+  onSave,
+}: {
+  date: string
+  family: { id: string; name: string; emoji: string }[]
+  onClose: () => void
+  onSave: (e: CalendarEvent) => void
+}) {
+  const [title, setTitle] = useState('')
+  const [d, setD] = useState(date)
+  const [time, setTime] = useState('')
+  const [category, setCategory] = useState<DocCategory>('other')
+  const [assignee, setAssignee] = useState<string>('')
+  const [remind, setRemind] = useState(true)
+
+  return (
+    <Modal open onClose={onClose} title="予定を追加">
+      <div className="space-y-3">
+        <Field label="予定名">
+          <input className={inputClass} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="授業参観、ゴミ出し など" autoFocus />
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="日付">
+            <input type="date" className={inputClass} value={d} onChange={(e) => setD(e.target.value)} />
+          </Field>
+          <Field label="時刻（任意）">
+            <input type="time" className={inputClass} value={time} onChange={(e) => setTime(e.target.value)} />
+          </Field>
+        </div>
+        <div>
+          <span className="mb-1 block text-sm font-semibold text-slate-600">分類</span>
+          <div className="flex flex-wrap gap-2">
+            {DOC_CATEGORIES.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => setCategory(c.id)}
+                className={`rounded-full px-3 py-1.5 text-sm font-semibold ${category === c.id ? 'text-white' : 'bg-slate-100 text-slate-500'}`}
+                style={category === c.id ? { backgroundColor: c.color } : undefined}
+              >
+                {c.emoji} {c.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {family.length > 0 && (
+          <div>
+            <span className="mb-1 block text-sm font-semibold text-slate-600">担当（任意）</span>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setAssignee('')}
+                className={`rounded-full px-3 py-1.5 text-sm font-semibold ${assignee === '' ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-500'}`}
+              >
+                なし
+              </button>
+              {family.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setAssignee(f.id)}
+                  className={`rounded-full px-3 py-1.5 text-sm font-semibold ${assignee === f.id ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-500'}`}
+                >
+                  {f.emoji} {f.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <label className="flex items-center gap-2 text-sm font-semibold text-slate-600">
+          <input type="checkbox" checked={remind} onChange={(e) => setRemind(e.target.checked)} className="h-5 w-5 accent-brand-500" />
+          家族にリマインダー通知する
+        </label>
+        <Button
+          className="w-full"
+          disabled={!title.trim()}
+          onClick={() =>
+            onSave({
+              id: uid(),
+              title: title.trim(),
+              date: d,
+              time: time || undefined,
+              category,
+              assignee: assignee || undefined,
+              remind,
+              done: false,
+              createdAt: Date.now(),
+            })
+          }
+        >
+          追加する
+        </Button>
+      </div>
+    </Modal>
+  )
+}
+
+function buildMonth(year: number, month: number): ({ day: number; iso: string } | null)[] {
+  const first = new Date(year, month, 1)
+  const startDow = first.getDay()
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const cells: ({ day: number; iso: string } | null)[] = []
+  for (let i = 0; i < startDow; i++) cells.push(null)
+  for (let day = 1; day <= daysInMonth; day++) {
+    const iso = todayISO(new Date(year, month, day))
+    void parseISO(iso)
+    cells.push({ day, iso })
+  }
+  return cells
+}
