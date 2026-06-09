@@ -10,9 +10,25 @@ let db: Firestore | null = null
 export function parseFirebaseConfig(raw: string | undefined): Record<string, string> | null {
   if (!raw || !raw.trim()) return null
   let t = raw.trim()
-  // `const firebaseConfig = {...};` のような貼り付けから {...} 部分を抽出
-  const m = t.match(/\{[\s\S]*\}/)
-  if (m) t = m[0]
+  // `const firebaseConfig = {...}` を含むスニペット全体を貼っても、その config オブジェクトだけを抽出する
+  const kw = t.indexOf('firebaseConfig')
+  if (kw >= 0) t = t.slice(kw)
+  const open = t.indexOf('{')
+  if (open >= 0) {
+    let depth = 0
+    let end = -1
+    for (let i = open; i < t.length; i++) {
+      if (t[i] === '{') depth++
+      else if (t[i] === '}') {
+        depth--
+        if (depth === 0) {
+          end = i
+          break
+        }
+      }
+    }
+    t = end >= 0 ? t.slice(open, end + 1) : t.slice(open)
+  }
   const tryParse = (str: string): Record<string, unknown> | null => {
     try {
       const o = JSON.parse(str)
