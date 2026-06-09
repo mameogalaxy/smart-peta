@@ -109,7 +109,7 @@ export function Meals() {
 
       {/* 給食入力 */}
       <Card className="p-4">
-        <Field label="🏫 今日の学校給食（被り回避に使用）" hint="献立提案時、給食と主菜・食材が被らないようAIが考慮します。">
+        <Field label="今日の学校給食（被り回避に使用）" hint="献立提案時、給食と主菜・食材が被らないようAIが考慮します。">
           <input
             className={inputClass}
             value={schoolLunch}

@@ -1,11 +1,11 @@
 {
-  "name": "スマートペタ",
-  "short_name": "スマートペタ",
+  "name": "スマートピタ",
+  "short_name": "スマートピタ",
   "description": "冷蔵庫の紙をゼロにする、家族のためのスマート掲示板",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f8fafc",
-  "theme_color": "#10b981",
+  "theme_color": "#3b82f6",
   "lang": "ja",
   "icons": [
     {

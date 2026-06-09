@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useStore } from '../lib/store'
 import { Card, Badge, Button, Modal, Field, inputClass, EmptyState } from '../components/ui'
-import { DOC_CATEGORIES, type CalendarEvent, type DocCategory } from '../types'
+import { DOC_CATEGORIES, type CalendarEvent, type DocCategory, type FamilyMember } from '../types'
 import { formatJpDate, parseISO, relativeDays, todayISO, uid } from '../lib/util'
 import { BellIcon, CalendarIcon, CheckIcon, PlusIcon, TrashIcon } from '../components/icons'
+import { CategoryIcon } from '../components/CategoryIcon'
+import { Avatar } from '../components/Avatar'
 
 const WEEK = ['日', '月', '火', '水', '木', '金', '土']
 
@@ -103,7 +105,7 @@ export function Calendar() {
             <EventRow
               key={e.id}
               e={e}
-              member={state.family.find((f) => f.id === e.assignee)?.emoji}
+              member={state.family.find((f) => f.id === e.assignee)}
               onToggleDone={() => updateEvent(e.id, { done: !e.done })}
               onToggleRemind={() => updateEvent(e.id, { remind: !e.remind })}
               onDelete={() => removeEvent(e.id)}
@@ -135,7 +137,7 @@ function EventRow({
   onDelete,
 }: {
   e: CalendarEvent
-  member?: string
+  member?: FamilyMember
   onToggleDone: () => void
   onToggleRemind: () => void
   onDelete: () => void
@@ -159,7 +161,7 @@ function EventRow({
           <Badge color={cat?.color}>{cat?.label}</Badge>
           {e.time && <span>{e.time}</span>}
           <span>{relativeDays(e.date)}</span>
-          {member && <span>{member}</span>}
+          {member && <Avatar member={member} size={16} />}
           {e.note && <span className="truncate">・{e.note}</span>}
         </div>
       </div>
@@ -180,7 +182,7 @@ function AddEventModal({
   onSave,
 }: {
   date: string
-  family: { id: string; name: string; emoji: string }[]
+  family: FamilyMember[]
   onClose: () => void
   onSave: (e: CalendarEvent) => void
 }) {
@@ -212,10 +214,10 @@ function AddEventModal({
               <button
                 key={c.id}
                 onClick={() => setCategory(c.id)}
-                className={`rounded-full px-3 py-1.5 text-sm font-semibold ${category === c.id ? 'text-white' : 'bg-slate-100 text-slate-500'}`}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold ${category === c.id ? 'text-white' : 'bg-slate-100 text-slate-500'}`}
                 style={category === c.id ? { backgroundColor: c.color } : undefined}
               >
-                {c.emoji} {c.label}
+                <CategoryIcon cat={c.id} size={15} /> {c.label}
               </button>
             ))}
           </div>
@@ -234,9 +236,9 @@ function AddEventModal({
                 <button
                   key={f.id}
                   onClick={() => setAssignee(f.id)}
-                  className={`rounded-full px-3 py-1.5 text-sm font-semibold ${assignee === f.id ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-500'}`}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold ${assignee === f.id ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-500'}`}
                 >
-                  {f.emoji} {f.name}
+                  <Avatar member={f} size={18} /> {f.name}
                 </button>
               ))}
             </div>

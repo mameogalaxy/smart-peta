@@ -1,6 +1,7 @@
 import { Link, useParams } from 'react-router-dom'
 import { useStore } from '../lib/store'
 import { ICON_SRC } from '../brand'
+import { CategoryIcon } from '../components/CategoryIcon'
 import { DOC_CATEGORIES } from '../types'
 import { formatJpDate } from '../lib/util'
 
@@ -35,9 +36,9 @@ export function DocView() {
     <div className="mx-auto min-h-screen max-w-lg bg-slate-100">
       <header className="flex items-center gap-2 border-b border-slate-200 bg-white px-4 py-3">
         <img src={ICON_SRC} alt="" className="h-8 w-8 rounded-lg" />
-        <div className="text-sm font-extrabold text-slate-800">スマートペタ</div>
-        <span className="ml-auto rounded-full px-2 py-0.5 text-xs font-bold" style={{ color: cat?.color, backgroundColor: `${cat?.color}1a` }}>
-          {cat?.emoji} {cat?.label}
+        <div className="text-sm font-extrabold text-slate-800">スマートピタ</div>
+        <span className="ml-auto inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold" style={{ color: cat?.color, backgroundColor: `${cat?.color}1a` }}>
+          <CategoryIcon cat={doc.category} size={13} /> {cat?.label}
         </span>
       </header>
 

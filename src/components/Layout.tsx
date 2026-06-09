@@ -63,7 +63,7 @@ export function Layout() {
             <img src={ICON_SRC} alt="" className="h-8 w-8 rounded-lg" />
             <div className="leading-tight">
               <div className="text-base font-extrabold tracking-tight text-slate-800">
-                スマートペタ
+                スマートピタ
               </div>
               {pageTitle ? (
                 <div className="text-[11px] font-semibold text-brand-600">{pageTitle}</div>

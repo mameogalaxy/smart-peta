@@ -20,7 +20,7 @@ export function Shopping() {
   }
 
   async function share() {
-    const text = `🛒 ${state.settings.householdName}の買い物リスト\n` + todo.map((i) => `□ ${i.name}${i.qty ? ` ${i.qty}` : ''}`).join('\n')
+    const text = `${state.settings.householdName}の買い物リスト\n` + todo.map((i) => `□ ${i.name}${i.qty ? ` ${i.qty}` : ''}`).join('\n')
     try {
       if (navigator.share) await navigator.share({ title: '買い物リスト', text })
       else {
@@ -78,7 +78,7 @@ export function Shopping() {
                     <p className="font-semibold text-slate-800">{i.name}</p>
                     {(i.qty || i.fromRecipeId || by) && (
                       <p className="text-xs text-slate-400">
-                        {i.qty ?? ''} {i.fromRecipeId ? '・レシピより' : ''} {by ? `・${by.emoji}${by.name}` : ''}
+                        {i.qty ?? ''} {i.fromRecipeId ? '・レシピより' : ''} {by ? `・${by.name}` : ''}
                       </p>
                     )}
                   </div>
@@ -88,7 +88,7 @@ export function Shopping() {
                 </Card>
               )
             })}
-            {todo.length === 0 && <p className="py-4 text-center text-sm text-slate-400">未購入はありません 🎉</p>}
+            {todo.length === 0 && <p className="py-4 text-center text-sm text-slate-400">未購入はありません</p>}
           </div>
 
           {done.length > 0 && (

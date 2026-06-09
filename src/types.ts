@@ -3,11 +3,11 @@
 /** 書類の自動分類カテゴリ */
 export type DocCategory = 'school' | 'garbage' | 'recipe' | 'other'
 
-export const DOC_CATEGORIES: { id: DocCategory; label: string; emoji: string; color: string }[] = [
-  { id: 'school', label: '学校', emoji: '🏫', color: '#f59e0b' },
-  { id: 'garbage', label: 'ゴミの日', emoji: '🗑️', color: '#10b981' },
-  { id: 'recipe', label: 'レシピ', emoji: '🍳', color: '#ef4444' },
-  { id: 'other', label: 'その他', emoji: '📄', color: '#6366f1' },
+export const DOC_CATEGORIES: { id: DocCategory; label: string; color: string }[] = [
+  { id: 'school', label: '学校', color: '#f59e0b' },
+  { id: 'garbage', label: 'ゴミの日', color: '#10b981' },
+  { id: 'recipe', label: 'レシピ', color: '#ef4444' },
+  { id: 'other', label: 'その他', color: '#6366f1' },
 ]
 
 /** スキャンして取り込んだ書類 */
@@ -88,8 +88,12 @@ export interface MealPlan {
 export interface FamilyMember {
   id: string
   name: string
-  emoji: string
+  /** アバターの色（頭文字を表示する円の背景色） */
+  color: string
 }
+
+/** 家族アバターに使う色パレット */
+export const MEMBER_COLORS = ['#3b82f6', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#10b981', '#6366f1']
 
 export interface Settings {
   /** Gemini APIキー（端末ローカルにのみ保存） */

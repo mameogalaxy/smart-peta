@@ -7,6 +7,7 @@ import type { DocItem } from '../types'
 import { formatJpDate, relativeDays, todayISO } from '../lib/util'
 import { QrModal } from '../components/QrModal'
 import { BellIcon, CalendarIcon, CartIcon, DocIcon, MealIcon, QrIcon } from '../components/icons'
+import { CategoryIcon } from '../components/CategoryIcon'
 
 export function Home() {
   const { state } = useStore()
@@ -29,7 +30,7 @@ export function Home() {
   return (
     <div className="space-y-5">
       <div className="animate-pop">
-        <p className="text-sm text-slate-400">{greet} 👋</p>
+        <p className="text-sm text-slate-400">{greet}</p>
         <h1 className="text-xl font-extrabold text-slate-800">
           冷蔵庫の紙、ぜんぶデジタルに。
         </h1>
@@ -124,7 +125,12 @@ export function Home() {
             return (
               <Link key={c.id} to={`/docs?cat=${c.id}`}>
                 <Card className="flex items-center gap-3 p-3.5">
-                  <span className="text-2xl">{c.emoji}</span>
+                  <span
+                    className="flex h-10 w-10 items-center justify-center rounded-xl"
+                    style={{ backgroundColor: `${c.color}1a`, color: c.color }}
+                  >
+                    <CategoryIcon cat={c.id} size={22} />
+                  </span>
                   <div className="flex-1">
                     <p className="font-bold text-slate-800">{c.label}</p>
                     <p className="text-xs text-slate-400">{docs.length}件</p>

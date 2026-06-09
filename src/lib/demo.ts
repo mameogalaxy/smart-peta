@@ -72,8 +72,8 @@ export function demoDinner(ctx: MealContext): MealSuggestion {
 /** 初回起動時のサンプルデータ（家族メンバーのみ用意） */
 export function seedFamily(): AppState['family'] {
   return [
-    { id: uid(), name: 'パパ', emoji: '👨' },
-    { id: uid(), name: 'ママ', emoji: '👩' },
-    { id: uid(), name: 'こども', emoji: '🧒' },
+    { id: uid(), name: 'パパ', color: '#3b82f6' },
+    { id: uid(), name: 'ママ', color: '#ec4899' },
+    { id: uid(), name: 'こども', color: '#14b8a6' },
   ]
 }

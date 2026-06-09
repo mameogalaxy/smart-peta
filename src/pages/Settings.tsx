@@ -2,9 +2,13 @@ import { useState } from 'react'
 import { useStore } from '../lib/store'
 import { Card, Button, Field, inputClass } from '../components/ui'
 import { PlusIcon, TrashIcon } from '../components/icons'
+import { Avatar } from '../components/Avatar'
+import { MEMBER_COLORS } from '../types'
 import { uid } from '../lib/util'
 
-const EMOJIS = ['👨', '👩', '🧒', '👦', '👧', '👶', '👴', '👵', '🐶', '🐱']
+function nextColor(used: string[]): string {
+  return MEMBER_COLORS.find((c) => !used.includes(c)) ?? MEMBER_COLORS[used.length % MEMBER_COLORS.length]
+}
 
 export function Settings() {
   const { state, updateSettings, setFamily, resetAll } = useStore()
@@ -48,8 +52,9 @@ export function Settings() {
               <option value="gemini-2.0-flash">gemini-2.0-flash</option>
             </select>
           </Field>
-          <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
-            {s.geminiApiKey ? '✅ キー設定済み。実際の写真をAIが解析します。' : '⚠️ 未設定。デモ解析で動作します（サンプル結果）。'}
+          <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+            <span className={`h-2 w-2 shrink-0 rounded-full ${s.geminiApiKey ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+            {s.geminiApiKey ? 'キー設定済み。実際の写真をAIが解析します。' : '未設定。デモ解析で動作します（サンプル結果）。'}
           </div>
         </Card>
       </section>
@@ -76,33 +81,35 @@ export function Settings() {
       <section>
         <h2 className="mb-2 text-sm font-bold text-slate-500">家族メンバー</h2>
         <Card className="space-y-2 p-4">
-          {state.family.map((f, idx) => (
-            <div key={f.id} className="flex items-center gap-2">
-              <select
-                value={f.emoji}
-                onChange={(e) => setFamily(state.family.map((x) => (x.id === f.id ? { ...x, emoji: e.target.value } : x)))}
-                className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-lg"
-              >
-                {EMOJIS.map((em) => (
-                  <option key={em} value={em}>
-                    {em}
-                  </option>
+          {state.family.map((f) => (
+            <div key={f.id} className="space-y-2 rounded-xl border border-slate-100 p-2">
+              <div className="flex items-center gap-2">
+                <Avatar member={f} size={36} />
+                <input
+                  className={inputClass}
+                  value={f.name}
+                  onChange={(e) => setFamily(state.family.map((x) => (x.id === f.id ? { ...x, name: e.target.value } : x)))}
+                />
+                <button
+                  onClick={() => setFamily(state.family.filter((x) => x.id !== f.id))}
+                  disabled={state.family.length <= 1}
+                  className="p-2 text-slate-300 disabled:opacity-30 active:text-red-500"
+                  aria-label={`${f.name}を削除`}
+                >
+                  <TrashIcon width={18} height={18} />
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5 pl-1">
+                {MEMBER_COLORS.map((col) => (
+                  <button
+                    key={col}
+                    onClick={() => setFamily(state.family.map((x) => (x.id === f.id ? { ...x, color: col } : x)))}
+                    className={`h-6 w-6 rounded-full transition ${f.color === col ? 'ring-2 ring-slate-700 ring-offset-2' : ''}`}
+                    style={{ backgroundColor: col }}
+                    aria-label="色を選ぶ"
+                  />
                 ))}
-              </select>
-              <input
-                className={inputClass}
-                value={f.name}
-                onChange={(e) => setFamily(state.family.map((x) => (x.id === f.id ? { ...x, name: e.target.value } : x)))}
-              />
-              <button
-                onClick={() => setFamily(state.family.filter((x) => x.id !== f.id))}
-                disabled={state.family.length <= 1}
-                className="p-2 text-slate-300 disabled:opacity-30 active:text-red-500"
-                aria-label={`${f.name}を削除`}
-              >
-                <TrashIcon width={18} height={18} />
-              </button>
-              {idx === -1 && null}
+              </div>
             </div>
           ))}
           <div className="flex gap-2 pt-1">
@@ -112,7 +119,7 @@ export function Settings() {
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && newName.trim()) {
-                  setFamily([...state.family, { id: uid(), name: newName.trim(), emoji: '🙂' }])
+                  setFamily([...state.family, { id: uid(), name: newName.trim(), color: nextColor(state.family.map((x) => x.color)) }])
                   setNewName('')
                 }
               }}
@@ -122,7 +129,7 @@ export function Settings() {
               variant="soft"
               disabled={!newName.trim()}
               onClick={() => {
-                setFamily([...state.family, { id: uid(), name: newName.trim(), emoji: '🙂' }])
+                setFamily([...state.family, { id: uid(), name: newName.trim(), color: nextColor(state.family.map((x) => x.color)) }])
                 setNewName('')
               }}
             >
@@ -152,7 +159,7 @@ export function Settings() {
         </Card>
       </section>
 
-      <p className="pb-4 text-center text-xs text-slate-300">スマートペタ v0.1 — 冷蔵庫の紙をゼロに</p>
+      <p className="pb-4 text-center text-xs text-slate-300">スマートピタ v0.1 — 冷蔵庫の紙をゼロに</p>
     </div>
   )
 }

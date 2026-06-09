@@ -6,6 +6,7 @@ import { scanDocument, GeminiError, type ScanResult } from '../lib/gemini'
 import { demoScan } from '../lib/demo'
 import { downscaleImage, fileToDataUrl, todayISO, uid, formatJpDate } from '../lib/util'
 import { DOC_CATEGORIES, type DocCategory } from '../types'
+import { CategoryIcon } from './CategoryIcon'
 
 type Phase = 'pick' | 'analyzing' | 'review'
 
@@ -202,12 +203,12 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
                 <button
                   key={c.id}
                   onClick={() => setCategory(c.id)}
-                  className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold transition ${
                     category === c.id ? 'text-white' : 'bg-slate-100 text-slate-500'
                   }`}
                   style={category === c.id ? { backgroundColor: c.color } : undefined}
                 >
-                  {c.emoji} {c.label}
+                  <CategoryIcon cat={c.id} size={15} /> {c.label}
                 </button>
               ))}
             </div>
@@ -257,7 +258,9 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
           {result.recipe && category === 'recipe' && (
             <div className="rounded-xl border border-slate-200 p-3">
               <div className="mb-1 flex items-center justify-between">
-                <p className="text-sm font-bold text-slate-600">🍳 レシピとして保存</p>
+                <p className="flex items-center gap-1.5 text-sm font-bold text-slate-600">
+                  <CategoryIcon cat="recipe" size={16} /> レシピとして保存
+                </p>
                 <Badge color="#ef4444">{result.recipe.ingredients.length}品の材料</Badge>
               </div>
               <p className="text-xs text-slate-400">{result.recipe.ingredients.join('、')}</p>

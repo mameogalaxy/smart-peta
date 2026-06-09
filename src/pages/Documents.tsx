@@ -5,7 +5,9 @@ import { Card, Badge, EmptyState, Button, Modal } from '../components/ui'
 import { QrModal } from '../components/QrModal'
 import { DOC_CATEGORIES, type DocCategory, type DocItem } from '../types'
 import { formatJpDate } from '../lib/util'
-import { DocIcon, QrIcon, TrashIcon } from '../components/icons'
+import { DocIcon, GridIcon, QrIcon, TrashIcon } from '../components/icons'
+import { CategoryIcon } from '../components/CategoryIcon'
+import type { ReactNode } from 'react'
 
 export function Documents() {
   const { state, removeDoc } = useStore()
@@ -28,14 +30,14 @@ export function Documents() {
     <div className="space-y-4">
       {/* カテゴリタブ */}
       <div className="flex gap-2 overflow-x-auto pb-1">
-        <Chip active={active === 'all'} onClick={() => setCat('all')} label="すべて" emoji="📚" />
+        <Chip active={active === 'all'} onClick={() => setCat('all')} label="すべて" icon={<GridIcon width={16} height={16} />} />
         {DOC_CATEGORIES.map((c) => (
           <Chip
             key={c.id}
             active={active === c.id}
             onClick={() => setCat(c.id)}
             label={c.label}
-            emoji={c.emoji}
+            icon={<CategoryIcon cat={c.id} size={16} />}
             color={c.color}
           />
         ))}
@@ -65,7 +67,7 @@ export function Documents() {
                     <div className="min-w-0 flex-1">
                       <div className="mb-1 flex items-center gap-2">
                         <Badge color={cat?.color}>
-                          {cat?.emoji} {cat?.label}
+                          <CategoryIcon cat={d.category} size={13} /> {cat?.label}
                         </Badge>
                         <span className="text-[11px] text-slate-400">{formatJpDate(new Date(d.createdAt).toISOString().slice(0, 10))}</span>
                       </div>
@@ -129,24 +131,24 @@ function Chip({
   active,
   onClick,
   label,
-  emoji,
-  color = '#10b981',
+  icon,
+  color = '#3b82f6',
 }: {
   active: boolean
   onClick: () => void
   label: string
-  emoji: string
+  icon: ReactNode
   color?: string
 }) {
   return (
     <button
       onClick={onClick}
-      className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm font-semibold transition ${
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold transition ${
         active ? 'text-white' : 'bg-white text-slate-500 ring-1 ring-slate-200'
       }`}
       style={active ? { backgroundColor: color } : undefined}
     >
-      {emoji} {label}
+      {icon} {label}
     </button>
   )
 }

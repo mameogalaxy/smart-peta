@@ -120,3 +120,44 @@ export const ShareIcon = (p: P) => (
     <path d="M8.2 10.8 15.8 6.2M8.2 13.2l7.6 4.6" />
   </svg>
 )
+
+export const SchoolIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M12 3 2.5 8 12 13l9.5-5z" />
+    <path d="M6.5 10.2V15c0 1.4 2.5 2.8 5.5 2.8s5.5-1.4 5.5-2.8v-4.8" />
+    <path d="M21.5 8v5" />
+  </svg>
+)
+
+export const UsersIcon = (p: P) => (
+  <svg {...base(p)}>
+    <circle cx="9" cy="8" r="3.2" />
+    <path d="M3.5 20a5.5 5.5 0 0 1 11 0" />
+    <path d="M16 5.2a3.2 3.2 0 0 1 0 5.6M17.5 14.4A5.5 5.5 0 0 1 20.5 20" />
+  </svg>
+)
+
+export const PrinterIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M7 8V3.5h10V8" />
+    <path d="M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2" />
+    <rect x="7" y="14" width="10" height="6.5" rx="1.5" />
+    <path d="M16.5 11.5h.01" />
+  </svg>
+)
+
+export const CopyIcon = (p: P) => (
+  <svg {...base(p)}>
+    <rect x="9" y="9" width="11" height="11" rx="2.5" />
+    <path d="M5 15a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2" />
+  </svg>
+)
+
+export const GridIcon = (p: P) => (
+  <svg {...base(p)}>
+    <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
+    <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
+    <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
+    <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
+  </svg>
+)
