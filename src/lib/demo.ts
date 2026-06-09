@@ -1,5 +1,5 @@
 import type { AppState } from '../types'
-import type { LunchMenuResult, MealContext, MealSuggestion, ScanResult } from './gemini'
+import type { FridgeScanResult, LunchMenuResult, MealContext, MealSuggestion, ScanResult } from './gemini'
 import { addDaysISO, todayISO, uid } from './util'
 
 /**
@@ -61,12 +61,17 @@ export function demoDinner(ctx: MealContext): MealSuggestion {
         { title: '豚の生姜焼き', ingredients: ['豚ロース 200g', '生姜', '玉ねぎ', '醤油', 'みりん'] },
       ]
   const pick = pool[Math.floor(Math.random() * pool.length)]
+  const fridge = ctx.fridgeItems.length ? `冷蔵庫の${ctx.fridgeItems.slice(0, 3).join('・')}を使い、` : ''
   return {
     dinner: pick.title,
-    reason: `給食「${ctx.schoolLunch || '不明'}」と主菜が被らず、最近の献立とも重複しない一品です。（デモ提案）`,
+    reason: `${fridge}給食「${ctx.schoolLunch || '不明'}」と主菜が被らず、最近の献立とも重複しない一品です。（デモ提案）`,
     recipeTitle: ctx.availableRecipes.length ? pick.title : undefined,
     ingredients: pick.ingredients,
   }
+}
+
+export function demoFridge(): FridgeScanResult {
+  return { items: ['卵', '牛乳', 'キャベツ', 'にんじん', '玉ねぎ', '豚こま肉', '豆腐', 'ピーマン', 'ウインナー', '味噌'] }
 }
 
 export function demoLunchMenu(): LunchMenuResult {

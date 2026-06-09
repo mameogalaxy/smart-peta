@@ -47,17 +47,16 @@ export function Settings() {
               </Button>
             </div>
           </Field>
-          <Field label="モデル" hint="2026年の無料枠で利用可能なモデルを指定します。">
-            <select
+          <Field label="モデル" hint="既定の gemini-flash-latest は常に最新の無料Flashを指すため、バージョン廃止の影響を受けません。通常は変更不要です。">
+            <input
               className={inputClass}
               value={s.geminiModel}
-              onChange={(e) => updateSettings({ geminiModel: e.target.value })}
-            >
-              <option value="gemini-2.5-flash">gemini-2.5-flash（推奨・高速/無料枠）</option>
-              <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite（軽量）</option>
-              <option value="gemini-2.5-pro">gemini-2.5-pro（高精度）</option>
-              <option value="gemini-2.0-flash">gemini-2.0-flash</option>
-            </select>
+              onChange={(e) => updateSettings({ geminiModel: e.target.value.trim() })}
+              placeholder="gemini-flash-latest"
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+            />
           </Field>
           <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
             <span className={`h-2 w-2 shrink-0 rounded-full ${s.geminiApiKey ? 'bg-emerald-500' : 'bg-amber-500'}`} />

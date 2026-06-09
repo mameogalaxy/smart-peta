@@ -95,6 +95,13 @@ export interface FamilyMember {
 /** 家族アバターに使う色パレット */
 export const MEMBER_COLORS = ['#3b82f6', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#10b981', '#6366f1']
 
+/** 冷蔵庫の中身（在庫）の1項目 */
+export interface InventoryItem {
+  id: string
+  name: string
+  createdAt: number
+}
+
 export interface Settings {
   /** Gemini APIキー（端末ローカルにのみ保存） */
   geminiApiKey: string
@@ -111,6 +118,8 @@ export interface AppState {
   recipes: Recipe[]
   shopping: ShoppingItem[]
   meals: MealPlan[]
+  /** 冷蔵庫の中身（在庫） */
+  inventory: InventoryItem[]
   family: FamilyMember[]
   settings: Settings
 }

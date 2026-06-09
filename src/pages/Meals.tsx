@@ -1,9 +1,9 @@
 import { useMemo, useRef, useState } from 'react'
 import { useStore } from '../lib/store'
 import { Card, Button, Field, inputClass, Spinner, EmptyState, Badge, Modal } from '../components/ui'
-import { MealIcon, SparkleIcon, CartIcon, TrashIcon, CameraIcon } from '../components/icons'
-import { suggestDinner, scanLunchMenu, GeminiError, type MealSuggestion } from '../lib/gemini'
-import { demoDinner, demoLunchMenu } from '../lib/demo'
+import { MealIcon, SparkleIcon, CartIcon, TrashIcon, CameraIcon, PlusIcon, CloseIcon } from '../components/icons'
+import { suggestDinner, scanLunchMenu, scanFridge, GeminiError, type MealSuggestion } from '../lib/gemini'
+import { demoDinner, demoLunchMenu, demoFridge } from '../lib/demo'
 import { addDaysISO, downscaleImage, fileToDataUrl, formatJpDate, todayISO, uid } from '../lib/util'
 import type { Recipe } from '../types'
 import { useConfirm } from '../lib/confirm'
@@ -21,6 +21,10 @@ export function Meals() {
   const lunchRef = useRef<HTMLInputElement>(null)
   const [scanningLunch, setScanningLunch] = useState(false)
   const [lunchMsg, setLunchMsg] = useState('')
+  const fridgeRef = useRef<HTMLInputElement>(null)
+  const [scanningFridge, setScanningFridge] = useState(false)
+  const [fridgeMsg, setFridgeMsg] = useState('')
+  const [fridgeInput, setFridgeInput] = useState('')
 
   const meal = state.meals.find((m) => m.date === date)
   const schoolLunch = meal?.schoolLunch ?? ''
@@ -75,6 +79,39 @@ export function Meals() {
     }
   }
 
+  async function onFridgeFile(file: File) {
+    setFridgeMsg('')
+    setScanningFridge(true)
+    try {
+      const raw = await fileToDataUrl(file)
+      const small = await downscaleImage(raw).catch(() => raw)
+      let res
+      try {
+        res = await scanFridge(small, state.settings)
+      } catch (e) {
+        if (e instanceof GeminiError && e.message === 'NO_KEY') res = demoFridge()
+        else throw e
+      }
+      store.addInventory(res.items.map((name) => ({ id: uid(), name, createdAt: Date.now() })))
+      setFridgeMsg(`${res.items.length}品を冷蔵庫に登録しました。`)
+    } catch (e) {
+      setFridgeMsg(e instanceof Error ? e.message : '読み取りに失敗しました。')
+    } finally {
+      setScanningFridge(false)
+    }
+  }
+
+  function addFridgeManual() {
+    const names = fridgeInput
+      .split(/[、,\s]+/)
+      .map((n) => n.trim())
+      .filter(Boolean)
+    if (!names.length) return
+    store.addInventory(names.map((name) => ({ id: uid(), name, createdAt: Date.now() })))
+    setFridgeInput('')
+    setFridgeMsg('')
+  }
+
   async function suggest() {
     setLoading(true)
     setError('')
@@ -84,6 +121,7 @@ export function Meals() {
       schoolLunch: schoolLunch || undefined,
       recentDinners,
       availableRecipes: state.recipes.map((r) => ({ title: r.title, ingredients: r.ingredients })),
+      fridgeItems: state.inventory.map((i) => i.name),
     }
     try {
       let res: MealSuggestion
@@ -179,6 +217,70 @@ export function Meals() {
         </Field>
 
         {lunchMsg && <p className="rounded-lg bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700">{lunchMsg}</p>}
+      </Card>
+
+      {/* 冷蔵庫の中身 */}
+      <Card className="space-y-3 p-4">
+        <div className="flex items-center justify-between">
+          <h2 className="font-bold text-slate-800">冷蔵庫の中身</h2>
+          <input
+            ref={fridgeRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) void onFridgeFile(f)
+              e.target.value = ''
+            }}
+          />
+          <Button variant="soft" onClick={() => fridgeRef.current?.click()} disabled={scanningFridge}>
+            {scanningFridge ? <Spinner /> : <CameraIcon width={18} height={18} />} 冷蔵庫を撮影
+          </Button>
+        </div>
+
+        <p className="text-xs text-slate-400">
+          冷蔵庫の中を撮影するとAIが食材を判定して登録します。AI提案は、ここにある食材を活かして考えます。
+        </p>
+
+        <div className="flex gap-2">
+          <input
+            className={inputClass}
+            value={fridgeInput}
+            onChange={(e) => setFridgeInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && addFridgeManual()}
+            placeholder="手入力で追加（例: 卵、牛乳、キャベツ）"
+          />
+          <Button onClick={addFridgeManual} disabled={!fridgeInput.trim()}>
+            <PlusIcon width={18} height={18} />
+          </Button>
+        </div>
+
+        {state.inventory.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {state.inventory.map((i) => (
+              <button
+                key={i.id}
+                onClick={() => store.removeInventory(i.id)}
+                className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-700 active:bg-slate-200"
+              >
+                {i.name}
+                <CloseIcon width={13} height={13} className="text-slate-400" />
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-slate-400">まだ登録がありません。撮影か手入力で追加してください。</p>
+        )}
+
+        {state.inventory.length > 0 && (
+          <button onClick={() => store.clearInventory()} className="text-xs font-semibold text-slate-400">
+            すべて消去
+          </button>
+        )}
+
+        {fridgeMsg && <p className="rounded-lg bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700">{fridgeMsg}</p>}
       </Card>
 
       {/* AI献立 */}

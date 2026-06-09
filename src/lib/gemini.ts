@@ -25,7 +25,7 @@ async function generate(
   if (!settings.geminiApiKey) {
     throw new GeminiError('NO_KEY')
   }
-  const model = settings.geminiModel || 'gemini-2.5-flash'
+  const model = settings.geminiModel || 'gemini-flash-latest'
   const url = `${ENDPOINT}/${model}:generateContent?key=${encodeURIComponent(settings.geminiApiKey)}`
 
   const generationConfig: Record<string, unknown> = {
@@ -171,10 +171,15 @@ export interface MealContext {
   schoolLunch?: string
   recentDinners: string[]
   availableRecipes: { title: string; ingredients: string[] }[]
+  /** 冷蔵庫にある食材 */
+  fridgeItems: string[]
 }
 
 /**
- * 今日の献立(夕食)を提案。学校給食と被らず、最近の夕食とも重複しないよう配慮。
+ * 今日の献立(夕食)を提案。
+ * - 学校給食と主菜・食材が被らない
+ * - 冷蔵庫にある食材を活かす（買い足しを最小限に）
+ * - 最近の夕食と重複しない
  */
 export async function suggestDinner(ctx: MealContext, settings: Settings): Promise<MealSuggestion> {
   const recipeList = ctx.availableRecipes.length
@@ -182,17 +187,50 @@ export async function suggestDinner(ctx: MealContext, settings: Settings): Promi
     : '（保存レシピなし）'
 
   const prompt = `あなたは家庭の献立プランナーです。${ctx.date} の夕食を1つ提案してください。
-条件:
-- その日の学校給食「${ctx.schoolLunch || '不明'}」と主菜・主な食材が被らないようにする。
-- 最近の夕食 [${ctx.recentDinners.join(' / ') || 'なし'}] と重複しないようにする。
-- できれば下記の保存レシピを優先的に活用する。無ければ一般的な家庭料理を提案。
+条件（重要度順）:
+1. 冷蔵庫にある食材 [${ctx.fridgeItems.join('、') || '不明'}] をできるだけ活用し、買い足しを最小限にする。
+2. その日の学校給食「${ctx.schoolLunch || '不明'}」と主菜・主な食材が被らないようにする。
+3. 最近の夕食 [${ctx.recentDinners.join(' / ') || 'なし'}] と重複しないようにする。
+4. 可能なら下記の保存レシピを活用。無ければ一般的な家庭料理を提案。
 保存レシピ:
 ${recipeList}
 
-dinner=献立名, reason=給食や直近の夕食を踏まえた提案理由(1文), recipeTitle=使った保存レシピ名(あれば), ingredients=買い物に必要な材料の配列。JSON のみ返す。`
+返却項目:
+- dinner=献立名
+- reason=冷蔵庫の食材・給食・直近の夕食を踏まえた提案理由(1〜2文)
+- recipeTitle=使った保存レシピ名(あれば)
+- ingredients=作るのに必要な材料の配列（冷蔵庫にある物も含む。買い足しが必要な物が分かるように全材料を列挙）
+JSON のみ返す。`
 
   const raw = await generate([{ text: prompt }], settings, { schema: MEAL_SCHEMA, temperature: 0.8 })
   return parseJson<MealSuggestion>(raw)
+}
+
+// ---- 冷蔵庫スキャン ----
+export interface FridgeScanResult {
+  items: string[]
+}
+
+const FRIDGE_SCHEMA = {
+  type: 'object',
+  properties: { items: { type: 'array', items: { type: 'string' } } },
+  required: ['items'],
+}
+
+/** 冷蔵庫の中（食材）の写真から、写っている食材を判定して列挙する。 */
+export async function scanFridge(imageDataUrl: string, settings: Settings): Promise<FridgeScanResult> {
+  const { mime, base64 } = splitDataUrl(imageDataUrl)
+  const prompt = `これは冷蔵庫の中（または食材）の写真です。写っている食材・食品を日本語で列挙してください。
+- 一般的な名称で（例: 卵、牛乳、にんじん、豆腐、キャベツ、鶏肉）。
+- 確実に判別できるものだけ。細かい調味料の小瓶などは主要な物のみ。
+- 同じ物は1つにまとめる。
+items に文字列配列で返す。JSON のみ。`
+  const raw = await generate(
+    [{ text: prompt }, { inline_data: { mime_type: mime, data: base64 } }],
+    settings,
+    { schema: FRIDGE_SCHEMA, temperature: 0.2 },
+  )
+  return parseJson<FridgeScanResult>(raw)
 }
 
 // ---- 給食献立表のスキャン ----

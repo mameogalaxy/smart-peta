@@ -12,6 +12,7 @@ import type {
   CalendarEvent,
   DocItem,
   FamilyMember,
+  InventoryItem,
   MealPlan,
   Recipe,
   Settings,
@@ -22,9 +23,22 @@ import { uid } from './util'
 
 const STORAGE_KEY = 'smart-peta:v1'
 
+/** 2026年時点の最新無料Flashを常に指す推奨モデル */
+export const DEFAULT_MODEL = 'gemini-flash-latest'
+
+/** 廃止予定の旧モデルIDは最新エイリアスへ移行する */
+const DEPRECATED_MODELS = new Set([
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-pro',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+  'gemini-1.5-pro',
+])
+
 const defaultSettings: Settings = {
   geminiApiKey: '',
-  geminiModel: 'gemini-2.5-flash',
+  geminiModel: DEFAULT_MODEL,
   shareBaseUrl: '',
   householdName: 'わが家',
 }
@@ -36,6 +50,7 @@ function initialState(): AppState {
     recipes: [],
     shopping: [],
     meals: [],
+    inventory: [],
     family: seedFamily(),
     settings: { ...defaultSettings },
   }
@@ -47,10 +62,16 @@ function load(): AppState {
     if (!raw) return initialState()
     const parsed = JSON.parse(raw) as Partial<AppState>
     const base = initialState()
+    const settings = { ...base.settings, ...(parsed.settings ?? {}) }
+    // 旧モデル/空欄は最新エイリアスへ移行
+    if (!settings.geminiModel || DEPRECATED_MODELS.has(settings.geminiModel)) {
+      settings.geminiModel = DEFAULT_MODEL
+    }
     return {
       ...base,
       ...parsed,
-      settings: { ...base.settings, ...(parsed.settings ?? {}) },
+      inventory: parsed.inventory ?? [],
+      settings,
       family: parsed.family?.length ? parsed.family : base.family,
     }
   } catch {
@@ -81,6 +102,10 @@ interface StoreApi {
   removeMeal: (id: string) => void
   /** 給食献立表スキャン等から、日付ごとの給食を一括登録 */
   setSchoolLunches: (items: { date: string; menu: string }[]) => void
+  // 冷蔵庫の中身
+  addInventory: (items: InventoryItem[]) => void
+  removeInventory: (id: string) => void
+  clearInventory: () => void
   // 家族
   setFamily: (f: FamilyMember[]) => void
   // 設定
@@ -157,6 +182,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
           return { ...s, meals: [...map.values()] }
         }),
+      addInventory: (items) =>
+        patch((s) => {
+          const existing = new Set(s.inventory.map((i) => i.name))
+          const fresh = items.filter((i) => i.name && !existing.has(i.name))
+          return { ...s, inventory: [...fresh, ...s.inventory] }
+        }),
+      removeInventory: (id) => patch((s) => ({ ...s, inventory: s.inventory.filter((i) => i.id !== id) })),
+      clearInventory: () => patch((s) => ({ ...s, inventory: [] })),
       setFamily: (f) => patch((s) => ({ ...s, family: f })),
       updateSettings: (p) => patch((s) => ({ ...s, settings: { ...s.settings, ...p } })),
       resetAll: () => {

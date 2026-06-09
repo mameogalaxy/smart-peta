@@ -3,9 +3,10 @@ import { useStore } from '../lib/store'
 import { Card, Badge, Button, Modal, Field, inputClass, EmptyState } from '../components/ui'
 import { DOC_CATEGORIES, type CalendarEvent, type DocCategory, type FamilyMember } from '../types'
 import { formatJpDate, parseISO, relativeDays, todayISO, uid } from '../lib/util'
-import { BellIcon, CalendarIcon, CheckIcon, PlusIcon, TrashIcon } from '../components/icons'
+import { CalendarIcon, CheckIcon, PlusIcon, TrashIcon } from '../components/icons'
 import { CategoryIcon } from '../components/CategoryIcon'
 import { Avatar } from '../components/Avatar'
+import { googleCalendarUrl } from '../lib/calendar'
 
 const WEEK = ['日', '月', '火', '水', '木', '金', '土']
 
@@ -100,18 +101,21 @@ export function Calendar() {
       {dayEvents.length === 0 ? (
         <EmptyState icon={<CalendarIcon width={36} height={36} />} title="この日の予定はありません" />
       ) : (
-        <div className="space-y-2">
-          {dayEvents.map((e) => (
-            <EventRow
-              key={e.id}
-              e={e}
-              member={state.family.find((f) => f.id === e.assignee)}
-              onToggleDone={() => updateEvent(e.id, { done: !e.done })}
-              onToggleRemind={() => updateEvent(e.id, { remind: !e.remind })}
-              onDelete={() => removeEvent(e.id)}
-            />
-          ))}
-        </div>
+        <>
+          <p className="-mt-1 text-xs text-slate-400">予定をタップするとGoogleカレンダーに追加（通知・アラーム設定）できます。</p>
+          <div className="space-y-2">
+            {dayEvents.map((e) => (
+              <EventRow
+                key={e.id}
+                e={e}
+                member={state.family.find((f) => f.id === e.assignee)}
+                onToggleDone={() => updateEvent(e.id, { done: !e.done })}
+                onAddCalendar={() => window.open(googleCalendarUrl(e), '_blank', 'noopener')}
+                onDelete={() => removeEvent(e.id)}
+              />
+            ))}
+          </div>
+        </>
       )}
 
       {adding && (
@@ -133,27 +137,28 @@ function EventRow({
   e,
   member,
   onToggleDone,
-  onToggleRemind,
+  onAddCalendar,
   onDelete,
 }: {
   e: CalendarEvent
   member?: FamilyMember
   onToggleDone: () => void
-  onToggleRemind: () => void
+  onAddCalendar: () => void
   onDelete: () => void
 }) {
   const cat = DOC_CATEGORIES.find((c) => c.id === e.category)
   return (
-    <Card className="flex items-center gap-3 p-3">
+    <Card className="flex items-center gap-2 p-3">
       <button
         onClick={onToggleDone}
+        aria-label="完了"
         className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 transition ${
           e.done ? 'border-brand-500 bg-brand-500 text-white' : 'border-slate-300 text-transparent'
         }`}
       >
         <CheckIcon width={16} height={16} />
       </button>
-      <div className="min-w-0 flex-1">
+      <button onClick={onAddCalendar} className="min-w-0 flex-1 text-left">
         <p className={`truncate font-semibold ${e.done ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
           {e.title}
         </p>
@@ -164,11 +169,15 @@ function EventRow({
           {member && <Avatar member={member} size={16} />}
           {e.note && <span className="truncate">・{e.note}</span>}
         </div>
-      </div>
-      <button onClick={onToggleRemind} className={`p-1.5 ${e.remind ? 'text-amber-500' : 'text-slate-300'}`}>
-        <BellIcon width={18} height={18} />
       </button>
-      <button onClick={onDelete} className="p-1.5 text-slate-300 active:text-red-500">
+      <button
+        onClick={onAddCalendar}
+        aria-label="Googleカレンダーに追加"
+        className="flex shrink-0 items-center gap-1 rounded-lg bg-brand-50 px-2.5 py-1.5 text-[11px] font-bold text-brand-700 active:bg-brand-100"
+      >
+        <CalendarIcon width={15} height={15} /> 通知
+      </button>
+      <button onClick={onDelete} aria-label="削除" className="p-1.5 text-slate-300 active:text-red-500">
         <TrashIcon width={18} height={18} />
       </button>
     </Card>
