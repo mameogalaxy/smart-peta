@@ -29,8 +29,16 @@ import {
   onSnapshot,
 } from 'firebase/firestore'
 import { ensureAnonSignIn, getDb, initFirebase, parseFirebaseConfig, randomId } from './firebase'
+import { DEFAULT_FIREBASE_CONFIG, HAS_DEFAULT_FIREBASE } from '../firebaseConfig'
 
 const STORAGE_KEY = 'smart-peta:v1'
+
+/** 設定の貼り付け config（あれば）→ 無ければ既定の共通 config を使う */
+function resolveConfig(raw?: string): Record<string, unknown> | null {
+  const fromSetting = parseFirebaseConfig(raw)
+  if (fromSetting) return fromSetting
+  return HAS_DEFAULT_FIREBASE ? (DEFAULT_FIREBASE_CONFIG as Record<string, unknown>) : null
+}
 
 /** クラウド同期する配列コレクション（画像は docs から除外して送る） */
 const SYNCED = ['docs', 'events', 'shopping', 'recipes', 'meals', 'inventory', 'family'] as const
@@ -175,7 +183,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // 受信：世帯データを購読してローカルへ反映
   useEffect(() => {
-    const cfg = parseFirebaseConfig(cfgStr)
+    const cfg = resolveConfig(cfgStr)
     if (!cfg || !hid) {
       setCloud({ status: 'off', error: '' })
       return
@@ -311,7 +319,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       cloud,
       createHousehold: async (name) => {
-        const cfg = parseFirebaseConfig(state.settings.firebaseConfig)
+        const cfg = resolveConfig(state.settings.firebaseConfig)
         if (!cfg) throw new Error('先にFirebase設定(JSON)を入力してください。')
         initFirebase(cfg)
         const myUid = await ensureAnonSignIn()
@@ -333,7 +341,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       joinHousehold: async (code, configStr) => {
         const configToUse = configStr ?? state.settings.firebaseConfig
-        const cfg = parseFirebaseConfig(configToUse)
+        const cfg = resolveConfig(configToUse)
         if (!cfg) throw new Error('先にFirebase設定(JSON)を入力してください。')
         const targetHid = code.trim()
         if (!targetHid) throw new Error('参加コードを入力してください。')

@@ -9,6 +9,7 @@ import { QrModal } from '../components/QrModal'
 import { MEMBER_COLORS } from '../types'
 import { useConfirm } from '../lib/confirm'
 import { encodeInvite } from '../lib/firebase'
+import { HAS_DEFAULT_FIREBASE } from '../firebaseConfig'
 import { uid } from '../lib/util'
 
 function nextColor(used: string[]): string {
@@ -202,16 +203,33 @@ export function Settings() {
                   : '未接続（この端末のみ）'}
           </div>
 
-          <Field label="Firebase 設定 (config JSON)" hint="Firebaseコンソール→プロジェクト設定→マイアプリ の firebaseConfig を {…} ごと貼り付け。端末内に保存され、家族で同じ設定を使います。">
-            <textarea
-              className={`${inputClass} min-h-24 font-mono text-xs`}
-              value={s.firebaseConfig ?? ''}
-              onChange={(e) => updateSettings({ firebaseConfig: e.target.value })}
-              placeholder='{"apiKey":"...","authDomain":"...","projectId":"...", ...}'
-              autoCapitalize="none"
-              spellCheck={false}
-            />
-          </Field>
+          {HAS_DEFAULT_FIREBASE ? (
+            <details className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+              <summary className="cursor-pointer font-semibold">上級者: 別のFirebaseを使う</summary>
+              <div className="mt-2">
+                <textarea
+                  className={`${inputClass} min-h-24 font-mono text-xs`}
+                  value={s.firebaseConfig ?? ''}
+                  onChange={(e) => updateSettings({ firebaseConfig: e.target.value })}
+                  placeholder="空欄なら共通の既定設定を使います"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                />
+                <p className="mt-1 text-[11px] text-slate-400">空欄でOK。独自のFirebaseを使う場合のみ config を貼り付け。</p>
+              </div>
+            </details>
+          ) : (
+            <Field label="Firebase 設定 (config JSON)" hint="Firebaseコンソール→プロジェクト設定→マイアプリ の firebaseConfig を貼り付け。">
+              <textarea
+                className={`${inputClass} min-h-24 font-mono text-xs`}
+                value={s.firebaseConfig ?? ''}
+                onChange={(e) => updateSettings({ firebaseConfig: e.target.value })}
+                placeholder='{"apiKey":"...","authDomain":"...","projectId":"...", ...}'
+                autoCapitalize="none"
+                spellCheck={false}
+              />
+            </Field>
+          )}
 
           {!s.householdId ? (
             <div className="space-y-3">
