@@ -295,8 +295,10 @@ export function Settings() {
                   onClick={() =>
                     setInviteQr({
                       title: `${s.householdName2 ?? '家族'} に招待`,
-                      url: `${appUrl}?invite=${encodeInvite(s.firebaseConfig ?? '', s.householdId!)}`,
-                      hint: 'スマホで読み取ると設定+参加が完了します',
+                      url: HAS_DEFAULT_FIREBASE
+                        ? `${appUrl}?join=${s.householdId}`
+                        : `${appUrl}?invite=${encodeInvite(s.firebaseConfig ?? '', s.householdId!)}`,
+                      hint: 'スマホで読み取ると参加できます',
                     })
                   }
                 >

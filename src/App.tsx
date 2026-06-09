@@ -19,13 +19,18 @@ function InviteHandler() {
   useEffect(() => {
     if (done.current) return
     done.current = true
-    const inv = new URLSearchParams(window.location.search).get('invite')
-    if (!inv) return
-    const dec = decodeInvite(inv)
-    if (!dec) return
+    const sp = new URLSearchParams(window.location.search)
+    const join = sp.get('join')
+    const inv = sp.get('invite')
+    if (!join && !inv) return
     void (async () => {
       try {
-        await store.joinHousehold(dec.h, dec.c)
+        if (join) {
+          await store.joinHousehold(join)
+        } else if (inv) {
+          const dec = decodeInvite(inv)
+          if (dec) await store.joinHousehold(dec.h, dec.c)
+        }
       } catch (e) {
         console.error(e)
       }
