@@ -48,7 +48,10 @@ export function DocView() {
           <p className="text-xs text-slate-400">取り込み: {formatJpDate(new Date(doc.createdAt).toISOString().slice(0, 10))}</p>
         </div>
         {doc.image && (
-          <img src={doc.image} alt={doc.title} className="w-full rounded-2xl ring-1 ring-slate-200" />
+          <a href={doc.image} target="_blank" rel="noopener" className="block">
+            <img src={doc.image} alt={doc.title} className="w-full rounded-2xl ring-1 ring-slate-200" />
+            <span className="mt-1 block text-center text-[11px] text-slate-400">タップで拡大</span>
+          </a>
         )}
         <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200/70">
           <p className="text-xs font-bold text-slate-400">要約</p>

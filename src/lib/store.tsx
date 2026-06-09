@@ -86,6 +86,7 @@ interface StoreApi {
   state: AppState
   // 書類
   addDoc: (doc: DocItem) => void
+  updateDoc: (id: string, patch: Partial<DocItem>) => void
   removeDoc: (id: string) => void
   // 予定
   addEvent: (e: CalendarEvent) => void
@@ -142,6 +143,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return {
       state,
       addDoc: (doc) => patch((s) => ({ ...s, docs: [doc, ...s.docs] })),
+      updateDoc: (id, p) => patch((s) => ({ ...s, docs: s.docs.map((d) => (d.id === id ? { ...d, ...p } : d)) })),
       removeDoc: (id) =>
         patch((s) => ({
           ...s,

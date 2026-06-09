@@ -1,22 +1,34 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useStore } from '../lib/store'
 import { Card, Badge, EmptyState, Button, Modal } from '../components/ui'
 import { QrModal } from '../components/QrModal'
+import { ImageLightbox } from '../components/ImageLightbox'
 import { DOC_CATEGORIES, type DocCategory, type DocItem } from '../types'
-import { formatJpDate } from '../lib/util'
-import { DocIcon, GridIcon, QrIcon, TrashIcon } from '../components/icons'
+import { formatJpDate, fileToDataUrl, downscaleImage } from '../lib/util'
+import { CameraIcon, DocIcon, GridIcon, QrIcon, TrashIcon } from '../components/icons'
 import { CategoryIcon } from '../components/CategoryIcon'
 import { useConfirm } from '../lib/confirm'
 import type { ReactNode } from 'react'
 
 export function Documents() {
-  const { state, removeDoc } = useStore()
+  const { state, removeDoc, updateDoc } = useStore()
   const confirm = useConfirm()
   const [params, setParams] = useSearchParams()
   const active = (params.get('cat') as DocCategory | null) ?? 'all'
   const [qrDoc, setQrDoc] = useState<DocItem | null>(null)
   const [detail, setDetail] = useState<DocItem | null>(null)
+  const [lightbox, setLightbox] = useState<string | null>(null)
+  const [showOcr, setShowOcr] = useState(false)
+  const detailFileRef = useRef<HTMLInputElement>(null)
+
+  async function onDetailImage(file: File) {
+    if (!detail) return
+    const raw = await fileToDataUrl(file)
+    const small = await downscaleImage(raw).catch(() => raw)
+    updateDoc(detail.id, { image: small })
+    setDetail({ ...detail, image: small })
+  }
 
   const docs = useMemo(() => {
     const list = active === 'all' ? state.docs : state.docs.filter((d) => d.category === active)
@@ -108,25 +120,69 @@ export function Documents() {
       <Modal open={!!detail} onClose={() => setDetail(null)} title={detail?.title}>
         {detail && (
           <div className="space-y-3">
-            {detail.image && (
-              <img src={detail.image} alt="" className="max-h-72 w-full rounded-xl object-contain ring-1 ring-slate-200" />
+            <input
+              ref={detailFileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (f) void onDetailImage(f)
+                e.target.value = ''
+              }}
+            />
+            {detail.image ? (
+              <div>
+                <button onClick={() => setLightbox(detail.image!)} className="block w-full">
+                  <img src={detail.image} alt="" className="max-h-80 w-full rounded-xl object-contain ring-1 ring-slate-200" />
+                </button>
+                <div className="mt-1 flex items-center justify-between">
+                  <span className="text-[11px] text-slate-400">タップで拡大</span>
+                  <button onClick={() => detailFileRef.current?.click()} className="text-xs font-semibold text-brand-600">
+                    画像を差し替え
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => detailFileRef.current?.click()}
+                className="flex w-full flex-col items-center gap-2 rounded-xl border-2 border-dashed border-slate-200 py-6 text-slate-400 active:bg-slate-50"
+              >
+                <CameraIcon width={28} height={28} />
+                <span className="text-sm font-semibold">写真を追加</span>
+              </button>
             )}
+
             <div className="rounded-xl bg-slate-50 p-3">
               <p className="text-xs font-bold text-slate-400">要約</p>
               <p className="mt-1 text-sm text-slate-700">{detail.summary}</p>
             </div>
-            <div>
-              <p className="mb-1 text-xs font-bold text-slate-400">読み取った文字（OCR）</p>
-              <pre className="whitespace-pre-wrap rounded-xl bg-white p-3 text-sm text-slate-600 ring-1 ring-slate-200">
-                {detail.text}
-              </pre>
-            </div>
+
+            {detail.text && (
+              <div>
+                <button
+                  onClick={() => setShowOcr((v) => !v)}
+                  className="flex w-full items-center justify-between text-xs font-bold text-slate-400"
+                >
+                  読み取った文字（OCR）
+                  <span className="text-slate-400">{showOcr ? '隠す ▲' : '表示 ▼'}</span>
+                </button>
+                {showOcr && (
+                  <pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap rounded-xl bg-white p-3 text-sm text-slate-600 ring-1 ring-slate-200">
+                    {detail.text}
+                  </pre>
+                )}
+              </div>
+            )}
+
             <Button className="w-full" onClick={() => { setQrDoc(detail); setDetail(null) }}>
               <QrIcon width={18} height={18} /> 冷蔵庫に貼るQRを発行
             </Button>
           </div>
         )}
       </Modal>
+
+      <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />
     </div>
   )
 }
