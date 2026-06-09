@@ -144,14 +144,13 @@ const SCAN_SCHEMA = {
  */
 export async function scanDocument(imageDataUrl: string, settings: Settings, today: string): Promise<ScanResult> {
   const { mime, base64 } = splitDataUrl(imageDataUrl)
-  const prompt = `あなたは家庭の書類整理アシスタントです。冷蔵庫に貼られがちな紙（学校のプリント、ゴミ収集カレンダー、レシピの切り抜き、その他のお知らせ）の写真を解析します。
-今日の日付は ${today} です。次を行ってください:
-1. 画像内の文字をOCRで読み取り text に全文を入れる（日本語）。
-2. category を school(学校) / garbage(ゴミの日) / recipe(レシピ) / other のいずれかに分類。
-3. title に内容が分かる短い見出し、summary に1〜2文の要約。
-4. 提出期限・行事・イベントなど日付付き項目を events に列挙。date は YYYY-MM-DD 形式（年が無ければ今日以降で最も近い年を推定）。
-5. レシピの場合のみ recipe に材料(ingredients)と手順(steps)、分量(servings)を入れる。
-JSON のみを返してください。`
+  const prompt = `You are a household paper-organizing assistant. Analyze a photo of a paper often stuck on a fridge (school handout, garbage-collection calendar, recipe clipping, or other notice). Today is ${today}.
+Respond with JSON only. ALL text values must be in Japanese.
+1. OCR all text in the image into "text" (Japanese).
+2. "category": one of school / garbage / recipe / other.
+3. "title": short descriptive headline. "summary": 1-2 sentence summary.
+4. "events": date-bearing items (deadlines, events). "date" as YYYY-MM-DD (if year missing, infer the nearest upcoming year).
+5. Only if it is a recipe, fill "recipe" with ingredients, steps, servings.`
 
   const raw = await generate(
     [
@@ -203,21 +202,16 @@ export async function suggestDinner(ctx: MealContext, settings: Settings): Promi
     ? ctx.availableRecipes.map((r) => `・${r.title}（材料: ${r.ingredients.join('、')}）`).join('\n')
     : '（保存レシピなし）'
 
-  const prompt = `あなたは家庭の献立プランナーです。${ctx.date} の夕食を1つ提案してください。
-条件（重要度順）:
-1. 冷蔵庫にある食材 [${ctx.fridgeItems.join('、') || '不明'}] をできるだけ活用し、買い足しを最小限にする。
-2. その日の学校給食「${ctx.schoolLunch || '不明'}」と主菜・主な食材が被らないようにする。
-3. 最近の夕食 [${ctx.recentDinners.join(' / ') || 'なし'}] と重複しないようにする。
-4. 可能なら下記の保存レシピを活用。無ければ一般的な家庭料理を提案。
-保存レシピ:
+  const prompt = `You are a household meal planner. Suggest ONE dinner for ${ctx.date}. Respond in JSON only, with all text values in Japanese.
+Conditions (by priority):
+1. Use the fridge ingredients as much as possible to minimize extra shopping. Fridge: [${ctx.fridgeItems.join(', ') || 'unknown'}].
+2. Avoid overlapping the main dish/ingredients with today's school lunch: "${ctx.schoolLunch || 'unknown'}".
+3. Avoid repeating recent dinners: [${ctx.recentDinners.join(' / ') || 'none'}].
+4. Prefer the saved recipes below; otherwise suggest a common Japanese home dish.
+Saved recipes:
 ${recipeList}
 
-返却項目:
-- dinner=献立名
-- reason=冷蔵庫の食材・給食・直近の夕食を踏まえた提案理由(1〜2文)
-- recipeTitle=使った保存レシピ名(あれば)
-- ingredients=作るのに必要な材料の配列（冷蔵庫にある物も含む。買い足しが必要な物が分かるように全材料を列挙）
-JSON のみ返す。`
+Return: "dinner" (dish name), "reason" (1-2 sentences considering fridge/lunch/recent dinners), "recipeTitle" (saved recipe name if used), "ingredients" (array of all ingredients needed to cook it). JSON only.`
 
   const raw = await generate([{ text: prompt }], settings, { schema: MEAL_SCHEMA, temperature: 0.8 })
   return parseJson<MealSuggestion>(raw)
@@ -237,11 +231,10 @@ const FRIDGE_SCHEMA = {
 /** 冷蔵庫の中（食材）の写真から、写っている食材を判定して列挙する。 */
 export async function scanFridge(imageDataUrl: string, settings: Settings): Promise<FridgeScanResult> {
   const { mime, base64 } = splitDataUrl(imageDataUrl)
-  const prompt = `これは冷蔵庫の中（または食材）の写真です。写っている食材・食品を日本語で列挙してください。
-- 一般的な名称で（例: 卵、牛乳、にんじん、豆腐、キャベツ、鶏肉）。
-- 確実に判別できるものだけ。細かい調味料の小瓶などは主要な物のみ。
-- 同じ物は1つにまとめる。
-items に文字列配列で返す。JSON のみ。`
+  const prompt = `This is a photo of the inside of a fridge (or food items). List the foods you can see. Respond with JSON only; every item must be in Japanese.
+- Use common names (e.g., 卵, 牛乳, にんじん, 豆腐, キャベツ, 鶏肉).
+- Only clearly identifiable items; for condiments include only major ones. Merge duplicates.
+Return "items" as a Japanese string array.`
   const raw = await generate(
     [{ text: prompt }, { inline_data: { mime_type: mime, data: base64 } }],
     settings,
@@ -279,13 +272,11 @@ const LUNCH_SCHEMA = {
  */
 export async function scanLunchMenu(imageDataUrl: string, settings: Settings, today: string): Promise<LunchMenuResult> {
   const { mime, base64 } = splitDataUrl(imageDataUrl)
-  const prompt = `あなたは学校給食の献立表を読み取るアシスタントです。今日は ${today} です。
-写真は1ヶ月分などの給食献立表（カレンダー形式が多い）です。次を行ってください:
-1. 各日付の給食メニューを読み取る。
-2. items に { date: "YYYY-MM-DD", menu: "主菜・主食・汁物などをカンマ区切りで簡潔に" } を日付順で列挙。
-3. date の年・月は献立表の表記を優先し、無ければ今日(${today})を基準に推定する。
-4. 土日や「給食なし」の日は含めない。
-JSON のみを返してください。`
+  const prompt = `You read school lunch menu tables (often a monthly calendar). Today is ${today}. Respond with JSON only, all text values in Japanese.
+1. Read each date's lunch menu.
+2. "items": list of { date: "YYYY-MM-DD", menu: "main dish/staple/soup, comma-separated, concise (Japanese)" } in date order.
+3. Prefer the year/month printed on the sheet; otherwise infer from today (${today}).
+4. Exclude weekends and "no lunch" days.`
 
   const raw = await generate(
     [
