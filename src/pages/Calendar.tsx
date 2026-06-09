@@ -6,7 +6,7 @@ import { formatJpDate, parseISO, relativeDays, todayISO, uid } from '../lib/util
 import { CalendarIcon, CheckIcon, PlusIcon, TrashIcon } from '../components/icons'
 import { CategoryIcon } from '../components/CategoryIcon'
 import { Avatar } from '../components/Avatar'
-import { googleCalendarUrl } from '../lib/calendar'
+import { googleCalendarUrl, addToCalendarIcs } from '../lib/calendar'
 
 const WEEK = ['日', '月', '火', '水', '木', '金', '土']
 
@@ -19,6 +19,7 @@ export function Calendar() {
   })
   const [selected, setSelected] = useState<string>(today)
   const [adding, setAdding] = useState(false)
+  const [calEvent, setCalEvent] = useState<CalendarEvent | null>(null)
 
   const eventsByDate = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>()
@@ -102,7 +103,7 @@ export function Calendar() {
         <EmptyState icon={<CalendarIcon width={36} height={36} />} title="この日の予定はありません" />
       ) : (
         <>
-          <p className="-mt-1 text-xs text-slate-400">予定をタップするとGoogleカレンダーに追加（通知・アラーム設定）できます。</p>
+          <p className="-mt-1 text-xs text-slate-400">予定をタップすると、時刻・通知を指定してカレンダー（Google / 端末）に追加できます。</p>
           <div className="space-y-2">
             {dayEvents.map((e) => (
               <EventRow
@@ -110,7 +111,7 @@ export function Calendar() {
                 e={e}
                 member={state.family.find((f) => f.id === e.assignee)}
                 onToggleDone={() => updateEvent(e.id, { done: !e.done })}
-                onAddCalendar={() => window.open(googleCalendarUrl(e), '_blank', 'noopener')}
+                onAddCalendar={() => setCalEvent(e)}
                 onDelete={() => removeEvent(e.id)}
               />
             ))}
@@ -129,7 +130,112 @@ export function Calendar() {
           }}
         />
       )}
+
+      {calEvent && (
+        <AddToCalendarSheet
+          event={calEvent}
+          onClose={() => setCalEvent(null)}
+          onPersist={(patch) => updateEvent(calEvent.id, patch)}
+        />
+      )}
     </div>
+  )
+}
+
+const REMINDERS = [
+  { label: 'なし', value: -1 },
+  { label: '5分前', value: 5 },
+  { label: '10分前', value: 10 },
+  { label: '30分前', value: 30 },
+  { label: '1時間前', value: 60 },
+  { label: '1日前', value: 1440 },
+]
+
+function AddToCalendarSheet({
+  event,
+  onClose,
+  onPersist,
+}: {
+  event: CalendarEvent
+  onClose: () => void
+  onPersist: (patch: Partial<CalendarEvent>) => void
+}) {
+  const [date, setDate] = useState(event.date)
+  const [time, setTime] = useState(event.time ?? '')
+  const [reminder, setReminder] = useState<number>(event.remindMinutes ?? 10)
+
+  // 編集中の値を反映した予定
+  const edited: CalendarEvent = { ...event, date, time: time || undefined, remindMinutes: reminder }
+
+  function persist() {
+    onPersist({ date, time: time || undefined, remindMinutes: reminder })
+  }
+
+  return (
+    <Modal open onClose={onClose} title="カレンダーに追加">
+      <div className="space-y-3">
+        <div className="rounded-xl bg-slate-50 p-3">
+          <p className="text-xs font-bold text-slate-400">予定</p>
+          <p className="font-semibold text-slate-800">{event.title}</p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="日付">
+            <input type="date" className={inputClass} value={date} onChange={(e) => setDate(e.target.value)} />
+          </Field>
+          <Field label="時刻">
+            <input type="time" className={inputClass} value={time} onChange={(e) => setTime(e.target.value)} />
+          </Field>
+        </div>
+        {!time && <p className="-mt-1 text-xs text-slate-400">時刻を空欄にすると終日予定になります。</p>}
+
+        <div>
+          <span className="mb-1 block text-sm font-semibold text-slate-600">通知（何分前）</span>
+          <div className="flex flex-wrap gap-2">
+            {REMINDERS.map((r) => (
+              <button
+                key={r.value}
+                onClick={() => setReminder(r.value)}
+                className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${
+                  reminder === r.value ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-500'
+                }`}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-2 pt-1">
+          <Button
+            className="w-full"
+            onClick={() => {
+              persist()
+              addToCalendarIcs(edited, reminder)
+              onClose()
+            }}
+          >
+            通知付きでカレンダーに追加（.ics）
+          </Button>
+          <Button
+            variant="soft"
+            className="w-full"
+            onClick={() => {
+              persist()
+              window.open(googleCalendarUrl(edited), '_blank', 'noopener')
+              onClose()
+            }}
+          >
+            Googleカレンダーで開く
+          </Button>
+        </div>
+        <p className="text-[11px] text-slate-400">
+          ・「通知付き（.ics）」は指定した分前の通知が予定に設定されます（iPhone/Android対応）。
+          <br />
+          ・「Googleカレンダー」は時刻が反映されます。通知はGoogleの既定設定（例: 10分前）になります。
+        </p>
+      </div>
+    </Modal>
   )
 }
 

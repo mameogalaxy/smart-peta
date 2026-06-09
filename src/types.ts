@@ -38,6 +38,8 @@ export interface CalendarEvent {
   docId?: string
   /** 通知リマインダーを有効にするか */
   remind: boolean
+  /** 通知の何分前か（.ics追加時に使用）。未設定は10分前 */
+  remindMinutes?: number
   /** 担当の家族メンバーID */
   assignee?: string
   done: boolean
