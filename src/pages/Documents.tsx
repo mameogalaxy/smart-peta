@@ -7,10 +7,12 @@ import { DOC_CATEGORIES, type DocCategory, type DocItem } from '../types'
 import { formatJpDate } from '../lib/util'
 import { DocIcon, GridIcon, QrIcon, TrashIcon } from '../components/icons'
 import { CategoryIcon } from '../components/CategoryIcon'
+import { useConfirm } from '../lib/confirm'
 import type { ReactNode } from 'react'
 
 export function Documents() {
   const { state, removeDoc } = useStore()
+  const confirm = useConfirm()
   const [params, setParams] = useSearchParams()
   const active = (params.get('cat') as DocCategory | null) ?? 'all'
   const [qrDoc, setQrDoc] = useState<DocItem | null>(null)
@@ -85,8 +87,10 @@ export function Documents() {
                   </button>
                   <div className="w-px bg-slate-100" />
                   <button
-                    onClick={() => {
-                      if (confirm(`「${d.title}」を削除しますか？`)) removeDoc(d.id)
+                    onClick={async () => {
+                      if (await confirm({ title: '書類を削除', message: `「${d.title}」を削除しますか？`, danger: true })) {
+                        removeDoc(d.id)
+                      }
                     }}
                     className="flex items-center justify-center gap-1.5 px-5 py-2.5 text-sm font-semibold text-slate-400 active:bg-slate-50"
                   >

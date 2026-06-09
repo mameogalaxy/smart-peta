@@ -23,7 +23,7 @@ export function Card({
   )
 }
 
-type BtnVariant = 'primary' | 'ghost' | 'soft' | 'danger'
+type BtnVariant = 'primary' | 'ghost' | 'soft' | 'danger' | 'dangerSolid'
 export function Button({
   variant = 'primary',
   className = '',
@@ -35,6 +35,7 @@ export function Button({
     ghost: 'bg-transparent text-slate-600 active:bg-slate-100',
     soft: 'bg-brand-50 text-brand-700 active:bg-brand-100',
     danger: 'bg-red-50 text-red-600 active:bg-red-100',
+    dangerSolid: 'bg-red-500 text-white shadow-sm active:bg-red-600',
   }
   return (
     <button

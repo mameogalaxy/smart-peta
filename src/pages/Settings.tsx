@@ -6,6 +6,7 @@ import { PlusIcon, TrashIcon, QrIcon } from '../components/icons'
 import { Avatar } from '../components/Avatar'
 import { QrModal } from '../components/QrModal'
 import { MEMBER_COLORS } from '../types'
+import { useConfirm } from '../lib/confirm'
 import { uid } from '../lib/util'
 
 function nextColor(used: string[]): string {
@@ -14,6 +15,7 @@ function nextColor(used: string[]): string {
 
 export function Settings() {
   const { state, updateSettings, setFamily, resetAll } = useStore()
+  const confirm = useConfirm()
   const s = state.settings
   const [showKey, setShowKey] = useState(false)
   const [newName, setNewName] = useState('')
@@ -178,8 +180,17 @@ export function Settings() {
           <Button
             variant="danger"
             className="w-full"
-            onClick={() => {
-              if (confirm('すべてのデータを削除して初期化しますか？この操作は元に戻せません。')) resetAll()
+            onClick={async () => {
+              if (
+                await confirm({
+                  title: 'すべて初期化',
+                  message: 'すべてのデータを削除して初期化しますか？この操作は元に戻せません。',
+                  confirmLabel: '初期化する',
+                  danger: true,
+                })
+              ) {
+                resetAll()
+              }
             }}
           >
             <TrashIcon width={18} height={18} /> すべてのデータを初期化

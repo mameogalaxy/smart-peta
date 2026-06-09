@@ -6,10 +6,12 @@ import { suggestDinner, scanLunchMenu, GeminiError, type MealSuggestion } from '
 import { demoDinner, demoLunchMenu } from '../lib/demo'
 import { addDaysISO, downscaleImage, fileToDataUrl, formatJpDate, todayISO, uid } from '../lib/util'
 import type { Recipe } from '../types'
+import { useConfirm } from '../lib/confirm'
 
 export function Meals() {
   const store = useStore()
   const { state } = store
+  const confirm = useConfirm()
   const [date, setDate] = useState(todayISO())
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -271,7 +273,11 @@ export function Meals() {
                         材料を買い物へ
                       </button>
                       <button
-                        onClick={() => { if (confirm('削除しますか？')) store.removeRecipe(r.id) }}
+                        onClick={async () => {
+                          if (await confirm({ title: 'レシピを削除', message: `「${r.title}」を削除しますか？`, danger: true })) {
+                            store.removeRecipe(r.id)
+                          }
+                        }}
                         className="ml-auto text-xs text-slate-300"
                       >
                         削除
