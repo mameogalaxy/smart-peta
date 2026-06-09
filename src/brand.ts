@@ -1,10 +1,10 @@
 // アプリのアイコンをインラインのデータURLとして持つ。
 // 単体HTML(file://)で開いたときも /icon.svg に依存せず表示できるようにするため。
+// ロゴ＝ブルー→ティールのチャットバブル（白抜き）＋左下のしっぽ＋右上のキラッと線。
 const SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-<defs><linearGradient id="g" x1="0.12" y1="0.05" x2="0.92" y2="0.95"><stop offset="0" stop-color="#5b63e6"/><stop offset="0.5" stop-color="#3b82f6"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs>
-<rect width="512" height="512" rx="118" fill="#ffffff"/>
-<path fill="none" stroke="url(#g)" stroke-width="60" stroke-linecap="round" d="M322 360 A132 132 0 1 0 250 388"/>
-<path fill="url(#g)" d="M232 330 q-6 70 14 118 q34 -28 40 -86 z"/>
+<defs><linearGradient id="spg" x1="0.18" y1="0.02" x2="0.82" y2="1"><stop offset="0" stop-color="#5a78fb"/><stop offset="0.5" stop-color="#3f8ef1"/><stop offset="1" stop-color="#26c7dd"/></linearGradient></defs>
+<g fill="url(#spg)"><path fill-rule="evenodd" d="M70 262a158 158 0 1 0 316 0a158 158 0 1 0-316 0ZM134 262a94 94 0 1 1 188 0a94 94 0 1 1-188 0Z"/><path d="M150 348Q96 432 112 452Q152 438 206 372Z"/></g>
+<g stroke="url(#spg)" stroke-width="22" stroke-linecap="round" fill="none"><path d="M398 92 414 54"/><path d="M432 148 472 118"/><path d="M434 200 480 196"/></g>
 </svg>`
 
 export const ICON_SRC = `data:image/svg+xml;utf8,${encodeURIComponent(SVG)}`
