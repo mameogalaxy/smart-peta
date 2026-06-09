@@ -73,8 +73,8 @@ export function QrModal({
   *{box-sizing:border-box;margin:0;padding:0}
   @page{margin:12mm}
   body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans','Noto Sans JP',system-ui,sans-serif;color:#0f172a;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .card{max-width:440px;margin:0 auto;padding:20px;text-align:center}
-  .qr{width:100%;max-width:400px;border:1px solid #e2e8f0;border-radius:24px}
+  .card{max-width:320px;margin:0 auto;padding:16px;text-align:center}
+  .qr{width:100%;max-width:300px;border:1px solid #e2e8f0;border-radius:20px}
   .hint{color:#475569;font-size:15px;line-height:1.6;margin-top:16px}
   .url{margin-top:8px;font-size:11px;color:#94a3b8;word-break:break-all}
 </style></head>
