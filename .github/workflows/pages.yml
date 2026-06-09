@@ -22,16 +22,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # Pagesの配信元を「GitHub Actions(ビルド成果物)」に固定する。
-      # これを行わないと、リポジトリのソース(開発用 index.html → /src/main.tsx)が
-      # そのまま配信され、アプリが起動しない。
-      - name: Force Pages build_type to workflow
+      # Pagesの配信元を「GitHub Actions(ビルド成果物)」に確実に固定する。
+      # legacy(ブランチ)のままだとリポジトリのソース(開発用 index.html → /src/main.tsx)が
+      # 配信されてアプリが起動しないため、workflowになるまでリトライして確認する。
+      - name: Ensure Pages source is GitHub Actions
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh api --method PUT "repos/${{ github.repository }}/pages" -f build_type=workflow \
-            || gh api --method POST "repos/${{ github.repository }}/pages" -f build_type=workflow \
-            || true
+          set +e
+          R="${{ github.repository }}"
+          for i in 1 2 3 4 5; do
+            gh api --method PUT "repos/$R/pages" -f build_type=workflow >/dev/null 2>&1 \
+              || gh api --method POST "repos/$R/pages" -f build_type=workflow >/dev/null 2>&1
+            BT=$(gh api "repos/$R/pages" --jq '.build_type' 2>/dev/null)
+            echo "Pages build_type now: $BT (attempt $i)"
+            [ "$BT" = "workflow" ] && break
+            sleep 4
+          done
+          exit 0
       - uses: actions/setup-node@v4
         with:
           node-version: 20
