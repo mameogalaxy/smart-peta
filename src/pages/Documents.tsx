@@ -5,9 +5,10 @@ import { Card, Badge, EmptyState, Button, Modal } from '../components/ui'
 import { QrModal } from '../components/QrModal'
 import { ImageLightbox } from '../components/ImageLightbox'
 import { DOC_CATEGORIES, type DocCategory, type DocItem } from '../types'
-import { formatJpDate, fileToDataUrl, downscaleImage } from '../lib/util'
-import { CameraIcon, DocIcon, GridIcon, PrinterIcon, QrIcon, TrashIcon } from '../components/icons'
+import { formatJpDate, fileToDataUrl, downscaleImage, todayISO, uid } from '../lib/util'
+import { CameraIcon, CheckIcon, DocIcon, GridIcon, PlusIcon, PrinterIcon, QrIcon, TrashIcon } from '../components/icons'
 import { CategoryIcon } from '../components/CategoryIcon'
+import { extractDates } from '../lib/classify'
 import { useConfirm } from '../lib/confirm'
 import { makeQrDataUrl, docShareUrl } from '../lib/qr'
 import { printHtml, escapeHtml } from '../lib/print'
@@ -15,7 +16,7 @@ import { ICON_SRC } from '../brand'
 import type { ReactNode } from 'react'
 
 export function Documents() {
-  const { state, removeDoc, updateDoc } = useStore()
+  const { state, removeDoc, updateDoc, addEvent } = useStore()
   const confirm = useConfirm()
   const [params, setParams] = useSearchParams()
   const active = (params.get('cat') as DocCategory | null) ?? 'all'
@@ -31,6 +32,27 @@ export function Documents() {
     const small = await downscaleImage(raw).catch(() => raw)
     updateDoc(detail.id, { image: small })
     setDetail({ ...detail, image: small })
+  }
+
+  const detectedEvents = detail ? extractDates(detail.text, todayISO()) : []
+  function eventAdded(ev: { title: string; date: string }) {
+    return !!detail && state.events.some((e) => e.docId === detail.id && e.date === ev.date && e.title === ev.title)
+  }
+  function addDocEvent(ev: { title: string; date: string; time?: string; note?: string }) {
+    if (!detail || eventAdded(ev)) return
+    addEvent({
+      id: uid(),
+      title: ev.title,
+      date: ev.date,
+      time: ev.time,
+      note: ev.note,
+      category: detail.category,
+      docId: detail.id,
+      remind: true,
+      remindMinutes: 10,
+      done: false,
+      createdAt: Date.now(),
+    })
   }
 
   const [printing, setPrinting] = useState(false)
@@ -215,6 +237,52 @@ export function Documents() {
               <p className="text-xs font-bold text-slate-400">要約</p>
               <p className="mt-1 text-sm text-slate-700">{detail.summary}</p>
             </div>
+
+            {detectedEvents.length > 0 && (
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <p className="text-xs font-bold text-slate-400">日程・実施期間</p>
+                  <button
+                    onClick={() => detectedEvents.forEach((ev) => addDocEvent(ev))}
+                    className="text-xs font-semibold text-brand-600"
+                  >
+                    すべて予定に追加
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {detectedEvents.map((ev, i) => {
+                    const added = eventAdded(ev)
+                    return (
+                      <div key={i} className="flex items-center gap-2 rounded-xl border border-slate-200 p-2.5">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-slate-700">{ev.title}</p>
+                          <p className="text-xs text-slate-400">
+                            {formatJpDate(ev.date)} {ev.time ?? ''} {ev.note ?? ''}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => addDocEvent(ev)}
+                          disabled={added}
+                          className={`inline-flex shrink-0 items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-bold ${
+                            added ? 'bg-slate-100 text-slate-400' : 'bg-brand-50 text-brand-700 active:bg-brand-100'
+                          }`}
+                        >
+                          {added ? (
+                            <>
+                              <CheckIcon width={14} height={14} /> 追加済み
+                            </>
+                          ) : (
+                            <>
+                              <PlusIcon width={14} height={14} /> 予定に追加
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             {detail.text && (
               <div>
