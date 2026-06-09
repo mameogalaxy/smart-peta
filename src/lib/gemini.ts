@@ -4,7 +4,10 @@ import { recordUsage } from './usage'
 
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models'
 
-export class GeminiError extends Error {}
+export class GeminiError extends Error {
+  /** 一時的エラー（503/429/500/ネットワーク）。別キーへのフォールバック対象。 */
+  transient = false
+}
 
 interface Part {
   text?: string
@@ -15,45 +18,30 @@ interface GenerateOptions {
   /** 構造化出力用の JSON スキーマ */
   schema?: Record<string, unknown>
   temperature?: number
+  /** 簡易・低出力タスクは軽量モデルを使う（コスパ重視） */
+  light?: boolean
 }
 
-/** Gemini generateContent への低レベル呼び出し */
-async function generate(
-  parts: Part[],
-  settings: Settings,
-  opts: GenerateOptions = {},
+function transientErr(message: string): GeminiError {
+  const e = new GeminiError(message)
+  e.transient = true
+  return e
+}
+
+/** 1つのキー・モデルで呼び出す（503等は数回リトライ） */
+async function callModel(
+  key: string,
+  model: string,
+  body: string,
 ): Promise<string> {
-  if (!settings.geminiApiKey) {
-    throw new GeminiError('NO_KEY')
-  }
-  const model = settings.geminiModel || 'gemini-flash-latest'
-  const url = `${ENDPOINT}/${model}:generateContent?key=${encodeURIComponent(settings.geminiApiKey)}`
-
-  const generationConfig: Record<string, unknown> = {
-    temperature: opts.temperature ?? 0.4,
-  }
-  if (opts.schema) {
-    generationConfig.responseMimeType = 'application/json'
-    generationConfig.responseSchema = opts.schema
-  }
-
-  const body = JSON.stringify({
-    contents: [{ role: 'user', parts }],
-    generationConfig,
-  })
-
-  // 503(過負荷)/429/500 は一時的なので指数バックオフで再試行する
-  const backoffs = [700, 1500, 3000]
+  const url = `${ENDPOINT}/${model}:generateContent?key=${encodeURIComponent(key)}`
+  const backoffs = [700, 1500]
   for (let attempt = 0; ; attempt++) {
     let res: Response
     try {
-      res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-      })
+      res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })
     } catch {
-      throw new GeminiError('ネットワークエラー: Gemini に接続できませんでした。')
+      throw transientErr('ネットワークエラー: Gemini に接続できませんでした。')
     }
 
     if (res.ok) {
@@ -73,19 +61,49 @@ async function generate(
     if (res.status === 404 || (res.status === 400 && /not found|not supported/i.test(errBody))) {
       throw new GeminiError(`モデル「${model}」が利用できません(${res.status})。設定のモデル名をご確認ください。`)
     }
-    // 一時的エラー → リトライ
     if ((res.status === 503 || res.status === 429 || res.status === 500) && attempt < backoffs.length) {
       await new Promise((r) => setTimeout(r, backoffs[attempt]))
       continue
     }
-    if (res.status === 503) {
-      throw new GeminiError('Geminiが混雑しています(503)。無料枠で時々起こります。少し待ってもう一度お試しください。')
-    }
-    if (res.status === 429) {
-      throw new GeminiError('無料枠のレート上限に達しました。1分ほど待って再試行してください。')
-    }
+    if (res.status === 503) throw transientErr('Geminiが混雑しています(503)。')
+    if (res.status === 429) throw transientErr('無料枠のレート上限に達しました(429)。')
+    if (res.status === 500) throw transientErr('Geminiサーバーエラー(500)。')
     throw new GeminiError(`Gemini エラー (${res.status})`)
   }
+}
+
+/**
+ * Gemini 呼び出し（低レベル）。
+ * - キーは「無料(primary)」→ 一時エラーなら「有料/予備(secondary)」へ自動フォールバック。
+ * - opts.light で軽量モデル（コスパ重視）に切替。
+ */
+async function generate(parts: Part[], settings: Settings, opts: GenerateOptions = {}): Promise<string> {
+  const keys = [settings.geminiApiKey, settings.geminiApiKey2].map((k) => (k || '').trim()).filter(Boolean)
+  if (!keys.length) throw new GeminiError('NO_KEY')
+
+  const model = opts.light
+    ? settings.geminiModelLight || settings.geminiModel || 'gemini-flash-latest'
+    : settings.geminiModel || 'gemini-flash-latest'
+
+  const generationConfig: Record<string, unknown> = { temperature: opts.temperature ?? 0.4 }
+  if (opts.schema) {
+    generationConfig.responseMimeType = 'application/json'
+    generationConfig.responseSchema = opts.schema
+  }
+  const body = JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig })
+
+  let lastErr: unknown
+  for (let ki = 0; ki < keys.length; ki++) {
+    try {
+      return await callModel(keys[ki], model, body)
+    } catch (e) {
+      lastErr = e
+      // 一時エラーで、まだ別のキーがあるならフォールバック
+      if (e instanceof GeminiError && e.transient && ki < keys.length - 1) continue
+      throw e
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new GeminiError('Gemini エラー')
 }
 
 function parseJson<T>(raw: string): T {
@@ -145,7 +163,12 @@ const SCAN_SCHEMA = {
 /**
  * 書類画像を Gemini で解析（OCR + 自動分類 + 予定抽出 + レシピ抽出）。
  */
-export async function scanDocument(imageDataUrl: string, settings: Settings, today: string): Promise<ScanResult> {
+export async function scanDocument(
+  imageDataUrl: string,
+  settings: Settings,
+  today: string,
+  instruction?: string,
+): Promise<ScanResult> {
   const { mime, base64 } = splitDataUrl(imageDataUrl)
   const prompt = `You are a household paper-organizing assistant. Analyze a photo of a paper often stuck on a fridge (school handout, garbage-collection calendar, recipe clipping, or other notice). Today is ${today}.
 Respond with JSON only. ALL text values must be in Japanese.
@@ -153,7 +176,9 @@ Respond with JSON only. ALL text values must be in Japanese.
 2. "category": one of school / garbage / recipe / utility(電気・ガス・水道・光熱費の請求や検針) / manual(取扱説明書・保証書) / work(仕事・業務関連) / other.
 3. "title": short descriptive headline. "summary": 1-2 sentence summary.
 4. "events": date-bearing items (deadlines, events). "date" as YYYY-MM-DD (if year missing, infer the nearest upcoming year).
-5. Only if it is a recipe, fill "recipe" with ingredients, steps, servings.`
+5. Only if it is a recipe, fill "recipe" with ingredients, steps, servings.${
+    instruction ? `\n6. Also follow this user instruction (reflect it in title/summary as appropriate): ${instruction}` : ''
+  }`
 
   const raw = await generate(
     [
@@ -179,7 +204,7 @@ Respond with JSON only. ALL text values must be in Japanese. Keep the original t
 
 PASTED TEXT:
 ${text}`
-  const raw = await generate([{ text: prompt }], settings, { schema: SCAN_SCHEMA, temperature: 0.2 })
+  const raw = await generate([{ text: prompt }], settings, { schema: SCAN_SCHEMA, temperature: 0.2, light: true })
   const r = parseJson<ScanResult>(raw)
   if (!r.text) r.text = text
   return r
@@ -235,7 +260,7 @@ ${recipeList}
 
 Return: "dinner" (dish name), "reason" (1-2 sentences considering fridge/lunch/recent dinners), "recipeTitle" (saved recipe name if used), "ingredients" (array of all ingredients needed to cook it). JSON only.`
 
-  const raw = await generate([{ text: prompt }], settings, { schema: MEAL_SCHEMA, temperature: 0.8 })
+  const raw = await generate([{ text: prompt }], settings, { schema: MEAL_SCHEMA, temperature: 0.8, light: true })
   return parseJson<MealSuggestion>(raw)
 }
 
@@ -260,7 +285,7 @@ Return "items" as a Japanese string array.`
   const raw = await generate(
     [{ text: prompt }, { inline_data: { mime_type: mime, data: base64 } }],
     settings,
-    { schema: FRIDGE_SCHEMA, temperature: 0.2 },
+    { schema: FRIDGE_SCHEMA, temperature: 0.2, light: true },
   )
   return parseJson<FridgeScanResult>(raw)
 }

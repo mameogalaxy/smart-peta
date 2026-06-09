@@ -25,6 +25,7 @@ export function Settings() {
   const confirm = useConfirm()
   const s = state.settings
   const [showKey, setShowKey] = useState(false)
+  const [showKey2, setShowKey2] = useState(false)
   const [newName, setNewName] = useState('')
   const [appQr, setAppQr] = useState<{ title: string; url: string; hint: string } | null>(null)
   const [usageTick, setUsageTick] = useState(0)
@@ -68,12 +69,51 @@ export function Settings() {
               <TrashIcon width={16} height={16} /> APIキーを削除
             </Button>
           )}
-          <Field label="モデル" hint="既定の gemini-flash-latest は常に最新の無料Flashを指すため、バージョン廃止の影響を受けません。通常は変更不要です。">
+
+          <Field
+            label="2つ目のAPIキー（予備・任意）"
+            hint="無料枠が混雑(503)・タイムアウトした時に自動でこちらへ切り替えます。有料や別アカウントのキーを入れると安定します。"
+          >
+            <div className="flex gap-2">
+              <input
+                className={inputClass}
+                type={showKey2 ? 'text' : 'password'}
+                value={s.geminiApiKey2 ?? ''}
+                onChange={(e) => updateSettings({ geminiApiKey2: e.target.value.trim() })}
+                placeholder="AIza...（任意）"
+                autoComplete="off"
+              />
+              <Button variant="ghost" onClick={() => setShowKey2((v) => !v)}>
+                {showKey2 ? '隠す' : '表示'}
+              </Button>
+            </div>
+          </Field>
+          {s.geminiApiKey2 && (
+            <button
+              onClick={() => updateSettings({ geminiApiKey2: '' })}
+              className="text-xs font-semibold text-slate-400"
+            >
+              2つ目のキーを削除
+            </button>
+          )}
+
+          <Field label="モデル（メイン）" hint="書類のOCRなど精度重視の処理に使用。既定の gemini-flash-latest は常に最新の無料Flash。">
             <input
               className={inputClass}
               value={s.geminiModel}
               onChange={(e) => updateSettings({ geminiModel: e.target.value.trim() })}
               placeholder="gemini-flash-latest"
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+            />
+          </Field>
+          <Field label="軽量モデル（コスパ用）" hint="冷蔵庫判定・献立提案・テキスト整理など出力が少ない処理に使用。安価/高速なモデルを指定するとコスパ最適化。">
+            <input
+              className={inputClass}
+              value={s.geminiModelLight ?? ''}
+              onChange={(e) => updateSettings({ geminiModelLight: e.target.value.trim() })}
+              placeholder="gemini-flash-lite-latest"
               autoComplete="off"
               autoCapitalize="none"
               spellCheck={false}

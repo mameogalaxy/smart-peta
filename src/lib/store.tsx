@@ -38,7 +38,9 @@ const DEPRECATED_MODELS = new Set([
 
 const defaultSettings: Settings = {
   geminiApiKey: '',
+  geminiApiKey2: '',
   geminiModel: DEFAULT_MODEL,
+  geminiModelLight: 'gemini-flash-lite-latest',
   shareBaseUrl: '',
   householdName: 'わが家',
   // 有料換算の目安（Gemini Flash想定・約¥150/$）。実際は無料枠なら¥0。

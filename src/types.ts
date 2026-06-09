@@ -108,6 +108,11 @@ export interface InventoryItem {
 }
 
 export interface Settings {
+  /** 2つ目のAPIキー（予備/有料）。一時エラー時に自動フォールバック。 */
+  geminiApiKey2?: string
+  /** 簡易・低出力タスク用の軽量モデル（コスパ重視） */
+  geminiModelLight?: string
+
   /** Gemini APIキー（端末ローカルにのみ保存） */
   geminiApiKey: string
   /** 使用するGeminiモデル（2026 無料枠） */

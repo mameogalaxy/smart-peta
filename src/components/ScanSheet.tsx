@@ -9,7 +9,7 @@ import { downscaleImage, fileToDataUrl, todayISO, uid, formatJpDate } from '../l
 import { DOC_CATEGORIES, type DocCategory } from '../types'
 import { CategoryIcon } from './CategoryIcon'
 
-type Phase = 'pick' | 'analyzing' | 'review'
+type Phase = 'pick' | 'confirm' | 'analyzing' | 'review'
 
 export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const store = useStore()
@@ -30,6 +30,8 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
   const [manualText, setManualText] = useState('')
   const [isManual, setIsManual] = useState(false)
   const [refining, setRefining] = useState(false)
+  // 撮影後のAIへの追加指示（任意）
+  const [instruction, setInstruction] = useState('')
 
   function reset() {
     setPhase('pick')
@@ -43,6 +45,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
     setManualText('')
     setIsManual(false)
     setRefining(false)
+    setInstruction('')
   }
 
   function close() {
@@ -55,7 +58,8 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
     const raw = await fileToDataUrl(file)
     const small = await downscaleImage(raw).catch(() => raw)
     setImage(small)
-    await analyze(small)
+    setInstruction('')
+    setPhase('confirm')
   }
 
   function toReview(res: ScanResult, opts: { demo?: boolean; manual?: boolean } = {}) {
@@ -75,7 +79,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
       let res: ScanResult
       let demo = false
       try {
-        res = await scanDocument(img, settings, todayISO())
+        res = await scanDocument(img, settings, todayISO(), instruction.trim() || undefined)
       } catch (e) {
         if (e instanceof GeminiError && e.message === 'NO_KEY') {
           res = demoScan()
@@ -235,6 +239,32 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
               この内容で登録
             </Button>
           </div>
+        </div>
+      )}
+
+      {phase === 'confirm' && (
+        <div className="space-y-3">
+          {image && <img src={image} alt="" className="mx-auto max-h-56 rounded-xl object-contain" />}
+          <Field label="AIへの指示（任意）" hint="例: 提出期限だけ拾って / 材料を英語で / ゴミの分別を箇条書きで。空欄でもOK。">
+            <textarea
+              className={`${inputClass} min-h-20`}
+              value={instruction}
+              onChange={(e) => setInstruction(e.target.value)}
+              placeholder="指示があれば入力（空欄でそのまま解析）"
+            />
+          </Field>
+          {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
+          <div className="flex gap-2">
+            <Button variant="ghost" className="flex-1" onClick={reset}>
+              戻る
+            </Button>
+            <Button className="flex-[2]" onClick={() => analyze(image)}>
+              <SparkleIcon width={18} height={18} /> AIで解析
+            </Button>
+          </div>
+          {!settings.geminiApiKey && (
+            <p className="text-center text-xs text-slate-400">※ APIキー未設定のためデモ解析になります（指示は反映されません）。</p>
+          )}
         </div>
       )}
 
