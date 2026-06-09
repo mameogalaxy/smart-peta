@@ -161,3 +161,25 @@ export const GridIcon = (p: P) => (
     <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
   </svg>
 )
+
+export const BoltIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12z" />
+  </svg>
+)
+
+export const BookIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z" />
+    <path d="M5 19.5A1.5 1.5 0 0 1 6.5 18H19v3H6.5A1.5 1.5 0 0 1 5 19.5z" />
+    <path d="M9 7.5h6M9 10.5h4" />
+  </svg>
+)
+
+export const BriefcaseIcon = (p: P) => (
+  <svg {...base(p)}>
+    <rect x="3" y="7.5" width="18" height="12.5" rx="2.5" />
+    <path d="M8.5 7.5V6a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v1.5" />
+    <path d="M3 12.5h18" />
+  </svg>
+)

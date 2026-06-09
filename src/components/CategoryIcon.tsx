@@ -1,11 +1,14 @@
 import type { SVGProps } from 'react'
 import type { DocCategory } from '../types'
-import { DocIcon, MealIcon, SchoolIcon, TrashIcon } from './icons'
+import { BoltIcon, BookIcon, BriefcaseIcon, DocIcon, MealIcon, SchoolIcon, TrashIcon } from './icons'
 
 const MAP: Record<DocCategory, (p: SVGProps<SVGSVGElement>) => React.JSX.Element> = {
   school: SchoolIcon,
   garbage: TrashIcon,
   recipe: MealIcon,
+  utility: BoltIcon,
+  manual: BookIcon,
+  work: BriefcaseIcon,
   other: DocIcon,
 }
 

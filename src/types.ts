@@ -1,12 +1,15 @@
 // ---- ドメインの型定義 ----
 
 /** 書類の自動分類カテゴリ */
-export type DocCategory = 'school' | 'garbage' | 'recipe' | 'other'
+export type DocCategory = 'school' | 'garbage' | 'recipe' | 'utility' | 'manual' | 'work' | 'other'
 
 export const DOC_CATEGORIES: { id: DocCategory; label: string; color: string }[] = [
   { id: 'school', label: '学校', color: '#f59e0b' },
   { id: 'garbage', label: 'ゴミの日', color: '#10b981' },
   { id: 'recipe', label: 'レシピ', color: '#ef4444' },
+  { id: 'utility', label: '光熱費', color: '#0ea5e9' },
+  { id: 'manual', label: '説明書', color: '#8b5cf6' },
+  { id: 'work', label: '仕事', color: '#475569' },
   { id: 'other', label: 'その他', color: '#6366f1' },
 ]
 

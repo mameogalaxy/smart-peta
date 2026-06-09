@@ -2,8 +2,9 @@ import { useRef, useState } from 'react'
 import { Modal, Button, Field, inputClass, Spinner, Badge } from './ui'
 import { CameraIcon, SparkleIcon } from './icons'
 import { useStore } from '../lib/store'
-import { scanDocument, GeminiError, type ScanResult } from '../lib/gemini'
+import { scanDocument, analyzeDocumentText, GeminiError, type ScanResult } from '../lib/gemini'
 import { demoScan } from '../lib/demo'
+import { classifyByKeywords, extractDates } from '../lib/classify'
 import { downscaleImage, fileToDataUrl, todayISO, uid, formatJpDate } from '../lib/util'
 import { DOC_CATEGORIES, type DocCategory } from '../types'
 import { CategoryIcon } from './CategoryIcon'
@@ -25,6 +26,10 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
   const [addIngredients, setAddIngredients] = useState(true)
   const [category, setCategory] = useState<DocCategory>('other')
   const [title, setTitle] = useState('')
+  // 手入力（テキスト貼り付け）モード
+  const [manualText, setManualText] = useState('')
+  const [isManual, setIsManual] = useState(false)
+  const [refining, setRefining] = useState(false)
 
   function reset() {
     setPhase('pick')
@@ -35,6 +40,9 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
     setPickedEvents(new Set())
     setCategory('other')
     setTitle('')
+    setManualText('')
+    setIsManual(false)
+    setRefining(false)
   }
 
   function close() {
@@ -50,30 +58,73 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
     await analyze(small)
   }
 
+  function toReview(res: ScanResult, opts: { demo?: boolean; manual?: boolean } = {}) {
+    setResult(res)
+    setCategory(res.category)
+    setTitle(res.title)
+    setPickedEvents(new Set(res.events.map((_, i) => i)))
+    setUsedDemo(!!opts.demo)
+    setIsManual(!!opts.manual)
+    setPhase('review')
+  }
+
   async function analyze(img: string) {
     setPhase('analyzing')
     setError('')
     try {
       let res: ScanResult
+      let demo = false
       try {
         res = await scanDocument(img, settings, todayISO())
-        setUsedDemo(false)
       } catch (e) {
         if (e instanceof GeminiError && e.message === 'NO_KEY') {
           res = demoScan()
-          setUsedDemo(true)
+          demo = true
         } else {
           throw e
         }
       }
-      setResult(res)
-      setCategory(res.category)
-      setTitle(res.title)
-      setPickedEvents(new Set(res.events.map((_, i) => i)))
-      setPhase('review')
+      toReview(res, { demo })
     } catch (e) {
       setError(e instanceof Error ? e.message : '解析に失敗しました。')
       setPhase('pick')
+    }
+  }
+
+  /** 貼り付けたテキストから（AI不要で）登録 */
+  function analyzeManual() {
+    const t = manualText.trim()
+    if (!t) return
+    const firstLine = t.split(/\n+/).map((s) => s.trim()).filter(Boolean)[0] ?? '書類'
+    const res: ScanResult = {
+      title: firstLine.slice(0, 30),
+      category: classifyByKeywords(t),
+      summary: t.replace(/\s+/g, ' ').slice(0, 80),
+      text: t,
+      events: extractDates(t, todayISO()),
+    }
+    setImage('')
+    toReview(res, { manual: true })
+  }
+
+  /** 貼り付けたテキストをAIで整理（分類・要約・予定を補完） */
+  async function refineWithAI() {
+    if (!result) return
+    setRefining(true)
+    setError('')
+    try {
+      const res = await analyzeDocumentText(result.text, settings, todayISO())
+      toReview(res, { manual: false })
+    } catch (e) {
+      setError(
+        e instanceof GeminiError && e.message === 'NO_KEY'
+          ? 'Gemini APIキーが未設定です（設定から登録できます）。'
+          : e instanceof Error
+            ? e.message
+            : 'AI整理に失敗しました。',
+      )
+    } finally {
+      setRefining(false)
     }
   }
 
@@ -167,6 +218,23 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
               ※ Gemini APIキー未設定のため<strong>デモ解析</strong>で動作します（設定から登録可）。
             </p>
           )}
+
+          {/* AI不要：文字を貼り付けて登録 */}
+          <div className="my-4 flex items-center gap-3 text-xs text-slate-400">
+            <span className="h-px flex-1 bg-slate-200" />または<span className="h-px flex-1 bg-slate-200" />
+          </div>
+          <div>
+            <span className="mb-1 block text-sm font-semibold text-slate-600">文字を貼り付けて登録（AI不要）</span>
+            <textarea
+              className={`${inputClass} min-h-24`}
+              value={manualText}
+              onChange={(e) => setManualText(e.target.value)}
+              placeholder="写真の文字を長押しコピー（テキスト認識）して、ここに貼り付け。自動でカテゴリ分け・日付抽出します。"
+            />
+            <Button className="mt-2 w-full" variant="soft" onClick={analyzeManual} disabled={!manualText.trim()}>
+              この内容で登録
+            </Button>
+          </div>
         </div>
       )}
 
@@ -187,6 +255,17 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
               デモ解析の結果です（APIキー未設定）。実際の写真の内容は読み取っていません。
             </p>
           )}
+          {isManual && (
+            <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              貼り付けたテキストから自動でカテゴリ・日付を判定しました。
+              {settings.geminiApiKey && (
+                <button onClick={refineWithAI} disabled={refining} className="ml-1 font-bold text-brand-600">
+                  {refining ? '整理中…' : 'AIでさらに整理する'}
+                </button>
+              )}
+            </div>
+          )}
+          {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
           <div className="flex gap-3">
             {image && <img src={image} alt="" className="h-24 w-20 rounded-lg object-cover ring-1 ring-slate-200" />}
             <div className="flex-1">
@@ -215,7 +294,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
           </div>
 
           <div className="rounded-xl bg-slate-50 p-3">
-            <p className="text-xs font-bold text-slate-400">AI要約</p>
+            <p className="text-xs font-bold text-slate-400">{isManual ? '内容' : 'AI要約'}</p>
             <p className="mt-1 text-sm text-slate-700">{result.summary}</p>
           </div>
 
@@ -278,7 +357,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
 
           <div className="flex gap-2 pt-1">
             <Button variant="ghost" className="flex-1" onClick={reset}>
-              撮り直す
+              やり直す
             </Button>
             <Button className="flex-[2]" onClick={save}>
               <SparkleIcon width={18} height={18} /> 保存する

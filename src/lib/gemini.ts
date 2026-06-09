@@ -114,7 +114,7 @@ const SCAN_SCHEMA = {
   type: 'object',
   properties: {
     title: { type: 'string' },
-    category: { type: 'string', enum: ['school', 'garbage', 'recipe', 'other'] },
+    category: { type: 'string', enum: ['school', 'garbage', 'recipe', 'utility', 'manual', 'work', 'other'] },
     summary: { type: 'string' },
     text: { type: 'string' },
     events: {
@@ -150,7 +150,7 @@ export async function scanDocument(imageDataUrl: string, settings: Settings, tod
   const prompt = `You are a household paper-organizing assistant. Analyze a photo of a paper often stuck on a fridge (school handout, garbage-collection calendar, recipe clipping, or other notice). Today is ${today}.
 Respond with JSON only. ALL text values must be in Japanese.
 1. OCR all text in the image into "text" (Japanese).
-2. "category": one of school / garbage / recipe / other.
+2. "category": one of school / garbage / recipe / utility(電気・ガス・水道・光熱費の請求や検針) / manual(取扱説明書・保証書) / work(仕事・業務関連) / other.
 3. "title": short descriptive headline. "summary": 1-2 sentence summary.
 4. "events": date-bearing items (deadlines, events). "date" as YYYY-MM-DD (if year missing, infer the nearest upcoming year).
 5. Only if it is a recipe, fill "recipe" with ingredients, steps, servings.`
@@ -164,6 +164,25 @@ Respond with JSON only. ALL text values must be in Japanese.
     { schema: SCAN_SCHEMA, temperature: 0.2 },
   )
   return parseJson<ScanResult>(raw)
+}
+
+/**
+ * 画像ではなく「貼り付けたテキスト」を解析して分類・要約・予定抽出を行う（画像トークン不要で安価）。
+ */
+export async function analyzeDocumentText(text: string, settings: Settings, today: string): Promise<ScanResult> {
+  const prompt = `You organize household documents. Below is text the user pasted from a paper (e.g., copied via phone text recognition). Today is ${today}.
+Respond with JSON only. ALL text values must be in Japanese. Keep the original text in "text".
+1. "category": one of school / garbage / recipe / utility(電気・ガス・水道・光熱費) / manual(取扱説明書・保証書) / work(仕事) / other.
+2. "title": short headline. "summary": 1-2 sentence summary.
+3. "events": date-bearing items as { title, date(YYYY-MM-DD), time?, note? } (infer nearest upcoming year if missing).
+4. Only if a recipe, fill "recipe".
+
+PASTED TEXT:
+${text}`
+  const raw = await generate([{ text: prompt }], settings, { schema: SCAN_SCHEMA, temperature: 0.2 })
+  const r = parseJson<ScanResult>(raw)
+  if (!r.text) r.text = text
+  return r
 }
 
 // ---- 献立生成 ----
