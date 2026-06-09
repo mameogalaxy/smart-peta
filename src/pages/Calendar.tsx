@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useStore } from '../lib/store'
 import { Card, Badge, Button, Modal, Field, inputClass, EmptyState } from '../components/ui'
 import { DOC_CATEGORIES, type CalendarEvent, type DocCategory, type FamilyMember } from '../types'
@@ -20,6 +21,17 @@ export function Calendar() {
   const [selected, setSelected] = useState<string>(today)
   const [adding, setAdding] = useState(false)
   const [calEvent, setCalEvent] = useState<CalendarEvent | null>(null)
+  const [params, setParams] = useSearchParams()
+
+  // 中央「＋」メニューからの「予定を追加」(?add=1) で追加モーダルを開く
+  useEffect(() => {
+    if (params.get('add') === '1') {
+      setAdding(true)
+      const p = new URLSearchParams(params)
+      p.delete('add')
+      setParams(p, { replace: true })
+    }
+  }, [params, setParams])
 
   const eventsByDate = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>()

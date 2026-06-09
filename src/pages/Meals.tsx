@@ -183,7 +183,6 @@ export function Meals() {
             ref={lunchRef}
             type="file"
             accept="image/*"
-            capture="environment"
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0]
@@ -245,7 +244,6 @@ export function Meals() {
             ref={fridgeRef}
             type="file"
             accept="image/*"
-            capture="environment"
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0]
