@@ -3,7 +3,7 @@ import { useStore } from '../lib/store'
 import { Card, Badge, Button, Modal, Field, inputClass, EmptyState } from '../components/ui'
 import { DOC_CATEGORIES, type CalendarEvent, type DocCategory, type FamilyMember } from '../types'
 import { formatJpDate, parseISO, relativeDays, todayISO, uid } from '../lib/util'
-import { CalendarIcon, CheckIcon, PlusIcon, TrashIcon } from '../components/icons'
+import { CalendarIcon, CheckIcon, PlusIcon, TrashIcon, ShareIcon } from '../components/icons'
 import { CategoryIcon } from '../components/CategoryIcon'
 import { Avatar } from '../components/Avatar'
 import { googleCalendarUrl, addToCalendarIcs } from '../lib/calendar'
@@ -40,6 +40,30 @@ export function Calendar() {
       const m = c.m + delta
       return { y: c.y + Math.floor(m / 12), m: ((m % 12) + 12) % 12 }
     })
+  }
+
+  async function shareSchedule() {
+    const t = todayISO()
+    const list = [...state.events]
+      .filter((e) => !e.done && e.date >= t)
+      .sort((a, b) => (a.date + (a.time ?? '')).localeCompare(b.date + (b.time ?? '')))
+      .slice(0, 14)
+    if (!list.length) {
+      alert('共有できる予定がありません。')
+      return
+    }
+    const text =
+      `${state.settings.householdName}の予定\n` +
+      list.map((e) => `・${formatJpDate(e.date)}${e.time ? ' ' + e.time : ''} ${e.title}`).join('\n')
+    try {
+      if (navigator.share) await navigator.share({ title: '予定', text })
+      else {
+        await navigator.clipboard.writeText(text)
+        alert('予定をコピーしました。家族に共有できます。')
+      }
+    } catch {
+      /* キャンセル */
+    }
   }
 
   return (
@@ -94,9 +118,14 @@ export function Calendar() {
 
       <div className="flex items-center justify-between">
         <h2 className="font-bold text-slate-700">{formatJpDate(selected)} の予定</h2>
-        <Button variant="soft" onClick={() => setAdding(true)}>
-          <PlusIcon width={18} height={18} /> 追加
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="ghost" onClick={shareSchedule}>
+            <ShareIcon width={18} height={18} /> 共有
+          </Button>
+          <Button variant="soft" onClick={() => setAdding(true)}>
+            <PlusIcon width={18} height={18} /> 追加
+          </Button>
+        </div>
       </div>
 
       {dayEvents.length === 0 ? (

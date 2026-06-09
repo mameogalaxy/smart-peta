@@ -47,6 +47,18 @@ export function Settings() {
               </Button>
             </div>
           </Field>
+          {s.geminiApiKey && (
+            <Button
+              variant="danger"
+              onClick={async () => {
+                if (await confirm({ title: 'APIキーを削除', message: '保存しているGemini APIキーを削除しますか？', confirmLabel: '削除', danger: true })) {
+                  updateSettings({ geminiApiKey: '' })
+                }
+              }}
+            >
+              <TrashIcon width={16} height={16} /> APIキーを削除
+            </Button>
+          )}
           <Field label="モデル" hint="既定の gemini-flash-latest は常に最新の無料Flashを指すため、バージョン廃止の影響を受けません。通常は変更不要です。">
             <input
               className={inputClass}

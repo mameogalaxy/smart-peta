@@ -102,6 +102,8 @@ interface StoreApi {
   removeMeal: (id: string) => void
   /** 給食献立表スキャン等から、日付ごとの給食を一括登録 */
   setSchoolLunches: (items: { date: string; menu: string }[]) => void
+  /** 給食を削除（dateを渡せばその日、省略で全部） */
+  clearSchoolLunches: (date?: string) => void
   // 冷蔵庫の中身
   addInventory: (items: InventoryItem[]) => void
   removeInventory: (id: string) => void
@@ -182,6 +184,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
           return { ...s, meals: [...map.values()] }
         }),
+      clearSchoolLunches: (date) =>
+        patch((s) => ({
+          ...s,
+          meals: s.meals.map((m) =>
+            date ? (m.date === date ? { ...m, schoolLunch: undefined } : m) : { ...m, schoolLunch: undefined },
+          ),
+        })),
       addInventory: (items) =>
         patch((s) => {
           const existing = new Set(s.inventory.map((i) => i.name))

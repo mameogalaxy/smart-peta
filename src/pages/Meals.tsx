@@ -197,9 +197,14 @@ export function Meals() {
         </div>
 
         {schoolLunch ? (
-          <div className="rounded-xl bg-amber-50 p-3">
-            <p className="text-xs font-bold text-amber-700">{formatJpDate(date)}の給食</p>
-            <p className="mt-0.5 text-sm font-semibold text-slate-800">{schoolLunch}</p>
+          <div className="flex items-start gap-2 rounded-xl bg-amber-50 p-3">
+            <div className="flex-1">
+              <p className="text-xs font-bold text-amber-700">{formatJpDate(date)}の給食</p>
+              <p className="mt-0.5 text-sm font-semibold text-slate-800">{schoolLunch}</p>
+            </div>
+            <button onClick={() => store.clearSchoolLunches(date)} aria-label="この日の給食を削除" className="p-1 text-amber-500 active:text-red-500">
+              <TrashIcon width={16} height={16} />
+            </button>
           </div>
         ) : (
           <p className="text-xs text-slate-400">
@@ -217,6 +222,19 @@ export function Meals() {
         </Field>
 
         {lunchMsg && <p className="rounded-lg bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700">{lunchMsg}</p>}
+
+        {state.meals.some((m) => m.schoolLunch) && (
+          <button
+            onClick={async () => {
+              if (await confirm({ title: '給食を全消去', message: '登録した給食をすべて削除しますか？', confirmLabel: '消去', danger: true })) {
+                store.clearSchoolLunches()
+              }
+            }}
+            className="text-xs font-semibold text-slate-400"
+          >
+            登録した給食をすべて消去
+          </button>
+        )}
       </Card>
 
       {/* 冷蔵庫の中身 */}
