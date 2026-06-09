@@ -6,16 +6,32 @@ let app: FirebaseApp | null = null
 let auth: Auth | null = null
 let db: Firestore | null = null
 
-/** 設定文字列(JSON)から Firebase config を取り出す。無効なら null。 */
+/** 設定文字列から Firebase config を取り出す。JSON でも、コンソールのJSオブジェクト形式でも可。無効なら null。 */
 export function parseFirebaseConfig(raw: string | undefined): Record<string, string> | null {
   if (!raw || !raw.trim()) return null
-  try {
-    const cfg = JSON.parse(raw)
-    if (cfg && typeof cfg === 'object' && cfg.apiKey && cfg.projectId) return cfg as Record<string, string>
-    return null
-  } catch {
-    return null
+  let t = raw.trim()
+  // `const firebaseConfig = {...};` のような貼り付けから {...} 部分を抽出
+  const m = t.match(/\{[\s\S]*\}/)
+  if (m) t = m[0]
+  const tryParse = (str: string): Record<string, unknown> | null => {
+    try {
+      const o = JSON.parse(str)
+      return o && typeof o === 'object' ? (o as Record<string, unknown>) : null
+    } catch {
+      return null
+    }
   }
+  let cfg = tryParse(t)
+  if (!cfg) {
+    // JSオブジェクト（キー無引用符・シングルクォート・末尾カンマ）を JSON へ寄せる
+    const jsonish = t
+      .replace(/([{,]\s*)([A-Za-z0-9_]+)\s*:/g, '$1"$2":')
+      .replace(/'/g, '"')
+      .replace(/,(\s*[}\]])/g, '$1')
+    cfg = tryParse(jsonish)
+  }
+  if (cfg && typeof cfg.apiKey === 'string' && typeof cfg.projectId === 'string') return cfg as Record<string, string>
+  return null
 }
 
 export function initFirebase(config: Record<string, unknown>): { auth: Auth; db: Firestore } {
