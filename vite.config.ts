@@ -9,6 +9,17 @@ import { viteSingleFile } from 'vite-plugin-singlefile'
 export default defineConfig(({ mode }) => ({
   base: './',
   plugins: [react(), tailwindcss(), ...(mode === 'single' ? [viteSingleFile()] : [])],
+  build: {
+    // ファイル名を固定（ハッシュ無し）にして、デプロイ後に古いHTMLが
+    // 消えたハッシュ付きJSを読みに行って真っ白になる問題を防ぐ。
+    rollupOptions: {
+      output: {
+        entryFileNames: 'assets/[name].js',
+        chunkFileNames: 'assets/[name].js',
+        assetFileNames: 'assets/[name][extname]',
+      },
+    },
+  },
   server: {
     host: true,
   },

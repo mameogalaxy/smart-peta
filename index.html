@@ -27,9 +27,28 @@
             String(detail || '') + '</pre>' +
             '<p style="color:#64748b">この内容をスクリーンショットで共有してください。</p></div>'
         }
-        window.addEventListener('error', function (e) {
-          show('起動エラー', (e && e.message ? e.message : '') + '\n' + (e && e.error && e.error.stack ? e.error.stack : ''))
-        })
+        // capture:true でJS/CSSの読み込み失敗(リソースエラー)も捕捉する
+        window.addEventListener(
+          'error',
+          function (e) {
+            var t = e.target
+            if (t && (t.tagName === 'SCRIPT' || t.tagName === 'LINK')) {
+              // キャッシュ不整合の可能性 → 1度だけキャッシュ回避リロードで自動復旧
+              try {
+                if (!sessionStorage.getItem('sp_recover')) {
+                  sessionStorage.setItem('sp_recover', '1')
+                  var u = location.href.split('#')[0]
+                  location.replace(u + (u.indexOf('?') < 0 ? '?' : '&') + 'r=' + Date.now() + (location.hash || ''))
+                  return
+                }
+              } catch (_) {}
+              show('読み込みエラー', '必要なファイルを読み込めませんでした。通信環境をご確認のうえ再読み込みしてください。')
+              return
+            }
+            show('起動エラー', (e && e.message ? e.message : '') + '\n' + (e && e.error && e.error.stack ? e.error.stack : ''))
+          },
+          true,
+        )
         window.addEventListener('unhandledrejection', function (e) {
           var rs = e && e.reason
           show('読み込みエラー', rs && (rs.stack || rs.message) ? (rs.stack || rs.message) : String(rs))
