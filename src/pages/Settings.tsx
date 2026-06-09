@@ -183,10 +183,17 @@ export function Settings() {
       {/* データ */}
       <section>
         <h2 className="mb-2 text-sm font-bold text-slate-500">データ</h2>
-        <Card className="p-4">
-          <p className="mb-3 text-sm text-slate-500">
+        <Card className="space-y-3 p-4">
+          <Button
+            variant="soft"
+            className="w-full"
+            onClick={() => location.replace(location.origin + location.pathname + '?v=' + Date.now())}
+          >
+            アプリを最新の状態に更新
+          </Button>
+          <p className="text-sm text-slate-500">
             書類{state.docs.length}件・予定{state.events.length}件・レシピ{state.recipes.length}件を
-            この端末に保存しています。
+            この端末に保存しています。データとAPIキーはこの端末内（ブラウザ）だけに保存され、外部やリポジトリには送られません。
           </p>
           <Button
             variant="danger"
