@@ -36,36 +36,53 @@ async function generate(
     generationConfig.responseSchema = opts.schema
   }
 
-  let res: Response
-  try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts }],
-        generationConfig,
-      }),
-    })
-  } catch {
-    throw new GeminiError('ネットワークエラー: Gemini に接続できませんでした。')
-  }
+  const body = JSON.stringify({
+    contents: [{ role: 'user', parts }],
+    generationConfig,
+  })
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    if (res.status === 400 && /API key not valid/i.test(body)) {
+  // 503(過負荷)/429/500 は一時的なので指数バックオフで再試行する
+  const backoffs = [700, 1500, 3000]
+  for (let attempt = 0; ; attempt++) {
+    let res: Response
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      })
+    } catch {
+      throw new GeminiError('ネットワークエラー: Gemini に接続できませんでした。')
+    }
+
+    if (res.ok) {
+      const json = await res.json()
+      const text: string | undefined =
+        json?.candidates?.[0]?.content?.parts?.map((p: Part) => p.text ?? '').join('') ?? undefined
+      if (!text) throw new GeminiError('Gemini から有効な応答が得られませんでした。')
+      return text
+    }
+
+    const errBody = await res.text().catch(() => '')
+    if (res.status === 400 && /API key not valid/i.test(errBody)) {
       throw new GeminiError('APIキーが無効です。設定を確認してください。')
     }
+    if (res.status === 404 || (res.status === 400 && /not found|not supported/i.test(errBody))) {
+      throw new GeminiError(`モデル「${model}」が利用できません(${res.status})。設定のモデル名をご確認ください。`)
+    }
+    // 一時的エラー → リトライ
+    if ((res.status === 503 || res.status === 429 || res.status === 500) && attempt < backoffs.length) {
+      await new Promise((r) => setTimeout(r, backoffs[attempt]))
+      continue
+    }
+    if (res.status === 503) {
+      throw new GeminiError('Geminiが混雑しています(503)。無料枠で時々起こります。少し待ってもう一度お試しください。')
+    }
     if (res.status === 429) {
-      throw new GeminiError('無料枠のレート上限に達しました。少し待って再試行してください。')
+      throw new GeminiError('無料枠のレート上限に達しました。1分ほど待って再試行してください。')
     }
     throw new GeminiError(`Gemini エラー (${res.status})`)
   }
-
-  const json = await res.json()
-  const text: string | undefined =
-    json?.candidates?.[0]?.content?.parts?.map((p: Part) => p.text ?? '').join('') ?? undefined
-  if (!text) throw new GeminiError('Gemini から有効な応答が得られませんでした。')
-  return text
 }
 
 function parseJson<T>(raw: string): T {
