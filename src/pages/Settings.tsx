@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStore } from '../lib/store'
+import { getUsage, resetUsage } from '../lib/usage'
 import { Card, Button, Field, inputClass } from '../components/ui'
 import { PlusIcon, TrashIcon, QrIcon } from '../components/icons'
 import { Avatar } from '../components/Avatar'
@@ -20,6 +21,8 @@ export function Settings() {
   const [showKey, setShowKey] = useState(false)
   const [newName, setNewName] = useState('')
   const [appQr, setAppQr] = useState<{ title: string; url: string; hint: string } | null>(null)
+  const [usageTick, setUsageTick] = useState(0)
+  const usage = useMemo(() => getUsage(), [usageTick])
 
   const appUrl = (s.shareBaseUrl || window.location.origin + window.location.pathname).replace(/[?#].*$/, '')
 
@@ -73,6 +76,37 @@ export function Settings() {
           <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
             <span className={`h-2 w-2 shrink-0 rounded-full ${s.geminiApiKey ? 'bg-emerald-500' : 'bg-amber-500'}`} />
             {s.geminiApiKey ? 'キー設定済み。実際の写真をAIが解析します。' : '未設定。デモ解析で動作します（サンプル結果）。'}
+          </div>
+
+          {/* AI利用状況 */}
+          <div className="rounded-xl border border-slate-200 p-3">
+            <p className="mb-1 text-xs font-bold text-slate-500">AI利用状況（この端末）</p>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div className="rounded-lg bg-slate-50 p-2">
+                <p className="text-[11px] text-slate-400">今日</p>
+                <p className="font-bold text-slate-800">{usage.dayReq}回</p>
+                <p className="text-[11px] text-slate-400">約{usage.dayTokens.toLocaleString()}トークン</p>
+              </div>
+              <div className="rounded-lg bg-slate-50 p-2">
+                <p className="text-[11px] text-slate-400">累計</p>
+                <p className="font-bold text-slate-800">{usage.totalReq}回</p>
+                <p className="text-[11px] text-slate-400">約{usage.totalTokens.toLocaleString()}トークン</p>
+              </div>
+            </div>
+            <p className="mt-2 text-[11px] text-slate-400">
+              無料枠内であれば料金は¥0です。正確な使用量・上限はGoogle AI Studioの管理画面でも確認できます。
+            </p>
+            {usage.totalReq > 0 && (
+              <button
+                onClick={() => {
+                  resetUsage()
+                  setUsageTick((n) => n + 1)
+                }}
+                className="mt-1 text-[11px] font-semibold text-slate-400"
+              >
+                カウントをリセット
+              </button>
+            )}
           </div>
         </Card>
       </section>

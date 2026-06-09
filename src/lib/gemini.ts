@@ -1,5 +1,6 @@
 import type { DocCategory, Settings } from '../types'
 import { splitDataUrl } from './util'
+import { recordUsage } from './usage'
 
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models'
 
@@ -57,6 +58,11 @@ async function generate(
 
     if (res.ok) {
       const json = await res.json()
+      const um = json?.usageMetadata
+      if (um) {
+        const total = um.totalTokenCount ?? (um.promptTokenCount ?? 0) + (um.candidatesTokenCount ?? 0)
+        recordUsage(total)
+      }
       const text: string | undefined =
         json?.candidates?.[0]?.content?.parts?.map((p: Part) => p.text ?? '').join('') ?? undefined
       if (!text) throw new GeminiError('Gemini から有効な応答が得られませんでした。')
