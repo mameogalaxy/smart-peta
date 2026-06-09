@@ -123,6 +123,16 @@ export interface Settings {
   /** 円換算の単価（100万トークンあたり・有料換算の目安） */
   yenInPerM: number
   yenOutPerM: number
+  // ---- 家族クラウド共有（Firebase） ----
+  /** Firebase Web config(JSON文字列)。空ならローカルのみ。 */
+  firebaseConfig?: string
+  /** 参加中の世帯ID（=招待コード）。未設定ならローカルのみ。 */
+  householdId?: string
+  /** 世帯の表示名 */
+  householdName2?: string
+  /** この端末の利用者名・色（家族メンバー登録用） */
+  memberName?: string
+  memberColor?: string
 }
 
 export interface AppState {

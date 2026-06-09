@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -20,8 +21,27 @@ import type {
 } from '../types'
 import { seedFamily } from './demo'
 import { uid } from './util'
+import {
+  doc as fsDoc,
+  setDoc,
+  updateDoc,
+  getDoc,
+  onSnapshot,
+} from 'firebase/firestore'
+import { ensureAnonSignIn, getDb, initFirebase, parseFirebaseConfig, randomId } from './firebase'
 
 const STORAGE_KEY = 'smart-peta:v1'
+
+/** クラウド同期する配列コレクション（画像は docs から除外して送る） */
+const SYNCED = ['docs', 'events', 'shopping', 'recipes', 'meals', 'inventory', 'family'] as const
+type SyncedKey = (typeof SYNCED)[number]
+
+export type CloudStatus = 'off' | 'connecting' | 'on' | 'error'
+
+function stripImages(col: SyncedKey, raw: unknown[]): unknown[] {
+  if (col !== 'docs') return raw
+  return (raw as DocItem[]).map(({ image: _img, ...rest }) => rest)
+}
 
 /** 2026年時点の最新無料Flashを常に指す推奨モデル */
 export const DEFAULT_MODEL = 'gemini-flash-latest'
@@ -119,6 +139,11 @@ interface StoreApi {
   // 設定
   updateSettings: (patch: Partial<Settings>) => void
   resetAll: () => void
+  // 家族クラウド共有
+  cloud: { status: CloudStatus; error: string }
+  createHousehold: (name: string) => Promise<string>
+  joinHousehold: (code: string, configStr?: string) => Promise<void>
+  leaveHousehold: () => void
 }
 
 const StoreContext = createContext<StoreApi | null>(null)
@@ -126,6 +151,79 @@ const StoreContext = createContext<StoreApi | null>(null)
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(load)
   const first = useRef(true)
+  const patch = useCallback((fn: (s: AppState) => AppState) => setState(fn), [])
+
+  // ---- 家族クラウド共有 ----
+  const [cloud, setCloud] = useState<{ status: CloudStatus; error: string }>({ status: 'off', error: '' })
+  /** 直近に同期した各コレクションの内容（エコー防止用） */
+  const lastSync = useRef<Record<string, string>>({})
+
+  const applyRemote = useCallback((col: SyncedKey, items: unknown[]) => {
+    lastSync.current[col] = JSON.stringify(items)
+    setState((s) => {
+      if (col === 'docs') {
+        const localById = new Map(s.docs.map((d) => [d.id, d]))
+        const merged = (items as DocItem[]).map((d) => ({ ...d, image: d.image ?? localById.get(d.id)?.image }))
+        return { ...s, docs: merged }
+      }
+      return { ...s, [col]: items } as AppState
+    })
+  }, [])
+
+  const cfgStr = state.settings.firebaseConfig
+  const hid = state.settings.householdId
+
+  // 受信：世帯データを購読してローカルへ反映
+  useEffect(() => {
+    const cfg = parseFirebaseConfig(cfgStr)
+    if (!cfg || !hid) {
+      setCloud({ status: 'off', error: '' })
+      return
+    }
+    let cancelled = false
+    const unsubs: (() => void)[] = []
+    setCloud({ status: 'connecting', error: '' })
+    ;(async () => {
+      try {
+        initFirebase(cfg)
+        await ensureAnonSignIn()
+        if (cancelled) return
+        for (const col of SYNCED) {
+          const ref = fsDoc(getDb(), 'households', hid, 'data', col)
+          const unsub = onSnapshot(
+            ref,
+            (snap) => {
+              const items = (snap.exists() ? (snap.data() as { items?: unknown[] }).items : []) ?? []
+              applyRemote(col, items as unknown[])
+            },
+            (err) => setCloud({ status: 'error', error: err.message }),
+          )
+          unsubs.push(unsub)
+        }
+        if (!cancelled) setCloud({ status: 'on', error: '' })
+      } catch (e) {
+        if (!cancelled) setCloud({ status: 'error', error: e instanceof Error ? e.message : 'クラウド接続に失敗しました。' })
+      }
+    })()
+    return () => {
+      cancelled = true
+      unsubs.forEach((u) => u())
+      lastSync.current = {}
+    }
+  }, [cfgStr, hid, applyRemote])
+
+  // 送信：ローカルの変更を世帯データへ反映（エコー防止）
+  useEffect(() => {
+    if (cloud.status !== 'on' || !hid) return
+    for (const col of SYNCED) {
+      const items = stripImages(col, state[col] as unknown[])
+      const ser = JSON.stringify(items)
+      if (ser !== lastSync.current[col]) {
+        lastSync.current[col] = ser
+        setDoc(fsDoc(getDb(), 'households', hid, 'data', col), { items }).catch(() => {})
+      }
+    }
+  }, [cloud.status, hid, state.docs, state.events, state.shopping, state.recipes, state.meals, state.inventory, state.family])
 
   // 永続化（初回ロードはスキップ）
   useEffect(() => {
@@ -141,7 +239,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [state])
 
   const api = useMemo<StoreApi>(() => {
-    const patch = (fn: (s: AppState) => AppState) => setState(fn)
     return {
       state,
       addDoc: (doc) => patch((s) => ({ ...s, docs: [doc, ...s.docs] })),
@@ -212,8 +309,60 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem(STORAGE_KEY)
         setState(initialState())
       },
+      cloud,
+      createHousehold: async (name) => {
+        const cfg = parseFirebaseConfig(state.settings.firebaseConfig)
+        if (!cfg) throw new Error('先にFirebase設定(JSON)を入力してください。')
+        initFirebase(cfg)
+        const myUid = await ensureAnonSignIn()
+        const newHid = randomId(20)
+        await setDoc(fsDoc(getDb(), 'households', newHid), {
+          name: name || 'わが家',
+          createdBy: myUid,
+          members: { [myUid]: true },
+          createdAt: Date.now(),
+        })
+        // 現在のローカルデータを世帯へアップロード
+        for (const col of SYNCED) {
+          const items = stripImages(col, state[col] as unknown[])
+          lastSync.current[col] = JSON.stringify(items)
+          await setDoc(fsDoc(getDb(), 'households', newHid, 'data', col), { items })
+        }
+        patch((s) => ({ ...s, settings: { ...s.settings, householdId: newHid, householdName2: name || 'わが家' } }))
+        return newHid
+      },
+      joinHousehold: async (code, configStr) => {
+        const configToUse = configStr ?? state.settings.firebaseConfig
+        const cfg = parseFirebaseConfig(configToUse)
+        if (!cfg) throw new Error('先にFirebase設定(JSON)を入力してください。')
+        const targetHid = code.trim()
+        if (!targetHid) throw new Error('参加コードを入力してください。')
+        initFirebase(cfg)
+        const myUid = await ensureAnonSignIn()
+        try {
+          await updateDoc(fsDoc(getDb(), 'households', targetHid), { [`members.${myUid}`]: true })
+        } catch {
+          throw new Error('参加に失敗しました。コードをご確認ください。')
+        }
+        let hname = '家族'
+        try {
+          const snap = await getDoc(fsDoc(getDb(), 'households', targetHid))
+          if (snap.exists()) hname = (snap.data() as { name?: string }).name ?? '家族'
+        } catch {
+          /* noop */
+        }
+        lastSync.current = {}
+        patch((s) => ({
+          ...s,
+          settings: { ...s.settings, firebaseConfig: configToUse, householdId: targetHid, householdName2: hname },
+        }))
+      },
+      leaveHousehold: () => {
+        lastSync.current = {}
+        patch((s) => ({ ...s, settings: { ...s.settings, householdId: undefined } }))
+      },
     }
-  }, [state])
+  }, [state, cloud, patch])
 
   return <StoreContext.Provider value={api}>{children}</StoreContext.Provider>
 }

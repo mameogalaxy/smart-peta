@@ -8,6 +8,7 @@ import { Avatar } from '../components/Avatar'
 import { QrModal } from '../components/QrModal'
 import { MEMBER_COLORS } from '../types'
 import { useConfirm } from '../lib/confirm'
+import { encodeInvite } from '../lib/firebase'
 import { uid } from '../lib/util'
 
 function nextColor(used: string[]): string {
@@ -21,11 +22,16 @@ function yen(n: number): string {
 }
 
 export function Settings() {
-  const { state, updateSettings, setFamily, resetAll } = useStore()
+  const { state, updateSettings, setFamily, resetAll, cloud, createHousehold, joinHousehold, leaveHousehold } = useStore()
   const confirm = useConfirm()
   const s = state.settings
   const [showKey, setShowKey] = useState(false)
   const [showKey2, setShowKey2] = useState(false)
+  const [hhName, setHhName] = useState('わが家')
+  const [joinCode, setJoinCode] = useState('')
+  const [cloudBusy, setCloudBusy] = useState(false)
+  const [cloudMsg, setCloudMsg] = useState('')
+  const [inviteQr, setInviteQr] = useState<{ title: string; url: string; hint: string } | null>(null)
   const [newName, setNewName] = useState('')
   const [appQr, setAppQr] = useState<{ title: string; url: string; hint: string } | null>(null)
   const [usageTick, setUsageTick] = useState(0)
@@ -176,6 +182,145 @@ export function Settings() {
           </div>
         </Card>
       </section>
+
+      {/* 家族クラウド共有 */}
+      <section>
+        <h2 className="mb-2 text-sm font-bold text-slate-500">家族でクラウド共有</h2>
+        <Card className="space-y-3 p-4">
+          <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            <span
+              className={`h-2 w-2 shrink-0 rounded-full ${
+                cloud.status === 'on' ? 'bg-emerald-500' : cloud.status === 'connecting' ? 'bg-amber-500' : cloud.status === 'error' ? 'bg-red-500' : 'bg-slate-300'
+              }`}
+            />
+            {cloud.status === 'on'
+              ? `同期中（${s.householdName2 ?? '家族'}）`
+              : cloud.status === 'connecting'
+                ? '接続中…'
+                : cloud.status === 'error'
+                  ? `エラー: ${cloud.error}`
+                  : '未接続（この端末のみ）'}
+          </div>
+
+          <Field label="Firebase 設定 (config JSON)" hint="Firebaseコンソール→プロジェクト設定→マイアプリ の firebaseConfig を {…} ごと貼り付け。端末内に保存され、家族で同じ設定を使います。">
+            <textarea
+              className={`${inputClass} min-h-24 font-mono text-xs`}
+              value={s.firebaseConfig ?? ''}
+              onChange={(e) => updateSettings({ firebaseConfig: e.target.value })}
+              placeholder='{"apiKey":"...","authDomain":"...","projectId":"...", ...}'
+              autoCapitalize="none"
+              spellCheck={false}
+            />
+          </Field>
+
+          {!s.householdId ? (
+            <div className="space-y-3">
+              <div>
+                <span className="mb-1 block text-sm font-semibold text-slate-600">新しく世帯を作る</span>
+                <div className="flex gap-2">
+                  <input className={inputClass} value={hhName} onChange={(e) => setHhName(e.target.value)} placeholder="世帯名（例: わが家）" />
+                  <Button
+                    disabled={cloudBusy}
+                    onClick={async () => {
+                      setCloudBusy(true)
+                      setCloudMsg('')
+                      try {
+                        await createHousehold(hhName)
+                        setCloudMsg('世帯を作成しました。招待QRを家族に見せて参加してもらえます。')
+                      } catch (e) {
+                        setCloudMsg(e instanceof Error ? e.message : '作成に失敗しました。')
+                      } finally {
+                        setCloudBusy(false)
+                      }
+                    }}
+                  >
+                    作成
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <span className="mb-1 block text-sm font-semibold text-slate-600">既存の世帯に参加</span>
+                <div className="flex gap-2">
+                  <input className={inputClass} value={joinCode} onChange={(e) => setJoinCode(e.target.value)} placeholder="参加コード" autoCapitalize="none" />
+                  <Button
+                    variant="soft"
+                    disabled={cloudBusy || !joinCode.trim()}
+                    onClick={async () => {
+                      setCloudBusy(true)
+                      setCloudMsg('')
+                      try {
+                        await joinHousehold(joinCode)
+                        setCloudMsg('世帯に参加しました。家族の内容が同期されます。')
+                      } catch (e) {
+                        setCloudMsg(e instanceof Error ? e.message : '参加に失敗しました。')
+                      } finally {
+                        setCloudBusy(false)
+                      }
+                    }}
+                  >
+                    参加
+                  </Button>
+                </div>
+                <p className="mt-1 text-[11px] text-slate-400">参加すると、この端末の内容は家族の内容に置き換わります。</p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="rounded-xl bg-brand-50 p-3">
+                <p className="text-xs font-bold text-brand-700">参加中の世帯</p>
+                <p className="font-semibold text-slate-800">{s.householdName2 ?? '家族'}</p>
+                <code className="mt-1 block break-all text-[11px] text-slate-400">コード: {s.householdId}</code>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant="soft"
+                  onClick={() =>
+                    setInviteQr({
+                      title: `${s.householdName2 ?? '家族'} に招待`,
+                      url: `${appUrl}?invite=${encodeInvite(s.firebaseConfig ?? '', s.householdId!)}`,
+                      hint: 'スマホで読み取ると設定+参加が完了します',
+                    })
+                  }
+                >
+                  招待QRを表示
+                </Button>
+                <Button
+                  variant="soft"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(s.householdId!)
+                      setCloudMsg('参加コードをコピーしました。')
+                    } catch {
+                      /* noop */
+                    }
+                  }}
+                >
+                  コードをコピー
+                </Button>
+              </div>
+              <Button
+                variant="danger"
+                className="w-full"
+                onClick={async () => {
+                  if (await confirm({ title: '世帯から退出', message: '退出するとこの端末は同期を停止します（家族側のデータは残ります）。', confirmLabel: '退出', danger: true })) {
+                    leaveHousehold()
+                    setCloudMsg('')
+                  }
+                }}
+              >
+                世帯から退出
+              </Button>
+            </div>
+          )}
+
+          {cloudMsg && <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">{cloudMsg}</p>}
+          <p className="text-[11px] text-slate-400">
+            文字データ（書類の文・予定・リスト等）のみ同期し、<strong>写真は各端末ローカル</strong>に保存（無料枠を維持）。データは参加中の世帯メンバーだけが見られます（他の人には不可視）。
+          </p>
+        </Card>
+      </section>
+
+      <QrModal custom={inviteQr} onClose={() => setInviteQr(null)} />
 
       {/* 共有 */}
       <section>
