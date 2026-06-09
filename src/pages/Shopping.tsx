@@ -3,20 +3,28 @@ import { useStore } from '../lib/store'
 import { Card, Button, EmptyState, inputClass } from '../components/ui'
 import { CartIcon, CheckIcon, PlusIcon, TrashIcon, ShareIcon } from '../components/icons'
 import { uid } from '../lib/util'
+import { SHOPPING_TEMPLATES } from '../lib/templates'
 
 export function Shopping() {
   const { state, addShopping, toggleShopping, removeShopping, clearCheckedShopping } = useStore()
   const [name, setName] = useState('')
+  const [grp, setGrp] = useState(0)
 
   const items = state.shopping
   const todo = items.filter((i) => !i.checked)
   const done = items.filter((i) => i.checked)
+  const pending = new Set(todo.map((i) => i.name))
 
   function add() {
     const n = name.trim()
     if (!n) return
     addShopping([{ id: uid(), name: n, checked: false, createdAt: Date.now() }])
     setName('')
+  }
+
+  function quickAdd(n: string) {
+    if (pending.has(n)) return
+    addShopping([{ id: uid(), name: n, checked: false, createdAt: Date.now() }])
   }
 
   async function share() {
@@ -46,6 +54,43 @@ export function Shopping() {
           <Button onClick={add} disabled={!name.trim()}>
             <PlusIcon width={18} height={18} />
           </Button>
+        </div>
+      </Card>
+
+      {/* テンプレからワンタップ追加 */}
+      <Card className="p-3">
+        <p className="mb-2 text-xs font-bold text-slate-500">よく買うものをタップで追加</p>
+        <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
+          {SHOPPING_TEMPLATES.map((g, idx) => (
+            <button
+              key={g.label}
+              onClick={() => setGrp(idx)}
+              className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold transition ${
+                grp === idx ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-500'
+              }`}
+            >
+              {g.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {SHOPPING_TEMPLATES[grp].items.map((n) => {
+            const added = pending.has(n)
+            return (
+              <button
+                key={n}
+                onClick={() => quickAdd(n)}
+                disabled={added}
+                className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-semibold transition ${
+                  added
+                    ? 'border-brand-200 bg-brand-50 text-brand-400'
+                    : 'border-slate-200 bg-white text-slate-600 active:bg-slate-50'
+                }`}
+              >
+                {added ? <CheckIcon width={14} height={14} /> : <PlusIcon width={14} height={14} />} {n}
+              </button>
+            )
+          })}
         </div>
       </Card>
 

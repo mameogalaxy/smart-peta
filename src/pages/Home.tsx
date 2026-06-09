@@ -6,7 +6,7 @@ import { DOC_CATEGORIES } from '../types'
 import type { DocItem } from '../types'
 import { formatJpDate, relativeDays, todayISO } from '../lib/util'
 import { QrModal } from '../components/QrModal'
-import { BellIcon, CalendarIcon, CartIcon, DocIcon, MealIcon, QrIcon } from '../components/icons'
+import { BellIcon, CalendarIcon, CartIcon, DocIcon, MealIcon, QrIcon, SchoolIcon } from '../components/icons'
 import { CategoryIcon } from '../components/CategoryIcon'
 
 export function Home() {
@@ -90,24 +90,33 @@ export function Home() {
         <SectionTitle action={<Link to="/meals" className="text-xs font-semibold text-brand-600">献立を見る</Link>}>
           今日の献立
         </SectionTitle>
-        <Card className="p-4">
+        <Card className="space-y-3 p-4">
+          {todayMeal?.schoolLunch && (
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+                <SchoolIcon width={22} height={22} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-bold text-slate-400">今日の給食</p>
+                <p className="font-semibold text-slate-800">{todayMeal.schoolLunch}</p>
+              </div>
+            </div>
+          )}
           {todayMeal?.dinner ? (
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-red-50 text-red-500">
-                <MealIcon width={24} height={24} />
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-50 text-red-500">
+                <MealIcon width={22} height={22} />
               </div>
-              <div className="flex-1">
-                <p className="font-bold text-slate-800">{todayMeal.dinner}</p>
-                {todayMeal.schoolLunch && (
-                  <p className="text-xs text-slate-400">給食: {todayMeal.schoolLunch} と被らない献立</p>
-                )}
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-bold text-slate-400">今日の夕食</p>
+                <p className="font-semibold text-slate-800">{todayMeal.dinner}</p>
               </div>
             </div>
           ) : (
             <div className="flex items-center justify-between">
-              <p className="text-sm text-slate-500">まだ決まっていません</p>
+              <p className="text-sm text-slate-500">夕食はまだ決まっていません</p>
               <Link to="/meals" className="text-sm font-semibold text-brand-600">
-                AIに提案してもらう →
+                AIに提案 →
               </Link>
             </div>
           )}

@@ -195,6 +195,54 @@ dinner=献立名, reason=給食や直近の夕食を踏まえた提案理由(1�
   return parseJson<MealSuggestion>(raw)
 }
 
+// ---- 給食献立表のスキャン ----
+export interface LunchMenuResult {
+  /** 日付ごとの給食メニュー */
+  items: { date: string; menu: string }[]
+}
+
+const LUNCH_SCHEMA = {
+  type: 'object',
+  properties: {
+    items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          date: { type: 'string' },
+          menu: { type: 'string' },
+        },
+        required: ['date', 'menu'],
+      },
+    },
+  },
+  required: ['items'],
+}
+
+/**
+ * 学校給食の献立表（月間カレンダー形式が多い）を解析し、日付ごとのメニューを抽出する。
+ */
+export async function scanLunchMenu(imageDataUrl: string, settings: Settings, today: string): Promise<LunchMenuResult> {
+  const { mime, base64 } = splitDataUrl(imageDataUrl)
+  const prompt = `あなたは学校給食の献立表を読み取るアシスタントです。今日は ${today} です。
+写真は1ヶ月分などの給食献立表（カレンダー形式が多い）です。次を行ってください:
+1. 各日付の給食メニューを読み取る。
+2. items に { date: "YYYY-MM-DD", menu: "主菜・主食・汁物などをカンマ区切りで簡潔に" } を日付順で列挙。
+3. date の年・月は献立表の表記を優先し、無ければ今日(${today})を基準に推定する。
+4. 土日や「給食なし」の日は含めない。
+JSON のみを返してください。`
+
+  const raw = await generate(
+    [
+      { text: prompt },
+      { inline_data: { mime_type: mime, data: base64 } },
+    ],
+    settings,
+    { schema: LUNCH_SCHEMA, temperature: 0.1 },
+  )
+  return parseJson<LunchMenuResult>(raw)
+}
+
 export function hasApiKey(settings: Settings): boolean {
   return Boolean(settings.geminiApiKey)
 }

@@ -18,6 +18,7 @@ import type {
   ShoppingItem,
 } from '../types'
 import { seedFamily } from './demo'
+import { uid } from './util'
 
 const STORAGE_KEY = 'smart-peta:v1'
 
@@ -78,6 +79,8 @@ interface StoreApi {
   // 献立
   upsertMeal: (m: MealPlan) => void
   removeMeal: (id: string) => void
+  /** 給食献立表スキャン等から、日付ごとの給食を一括登録 */
+  setSchoolLunches: (items: { date: string; menu: string }[]) => void
   // 家族
   setFamily: (f: FamilyMember[]) => void
   // 設定
@@ -143,6 +146,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
         }),
       removeMeal: (id) => patch((s) => ({ ...s, meals: s.meals.filter((m) => m.id !== id) })),
+      setSchoolLunches: (items) =>
+        patch((s) => {
+          const map = new Map(s.meals.map((m) => [m.date, m]))
+          for (const it of items) {
+            if (!it.date || !it.menu) continue
+            const ex = map.get(it.date)
+            if (ex) map.set(it.date, { ...ex, schoolLunch: it.menu })
+            else map.set(it.date, { id: uid(), date: it.date, schoolLunch: it.menu, recipeIds: [], createdAt: Date.now() })
+          }
+          return { ...s, meals: [...map.values()] }
+        }),
       setFamily: (f) => patch((s) => ({ ...s, family: f })),
       updateSettings: (p) => patch((s) => ({ ...s, settings: { ...s.settings, ...p } })),
       resetAll: () => {

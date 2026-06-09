@@ -1,8 +1,10 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useStore } from '../lib/store'
 import { Card, Button, Field, inputClass } from '../components/ui'
-import { PlusIcon, TrashIcon } from '../components/icons'
+import { PlusIcon, TrashIcon, QrIcon } from '../components/icons'
 import { Avatar } from '../components/Avatar'
+import { QrModal } from '../components/QrModal'
 import { MEMBER_COLORS } from '../types'
 import { uid } from '../lib/util'
 
@@ -15,6 +17,9 @@ export function Settings() {
   const s = state.settings
   const [showKey, setShowKey] = useState(false)
   const [newName, setNewName] = useState('')
+  const [appQr, setAppQr] = useState<{ title: string; url: string; hint: string } | null>(null)
+
+  const appUrl = (s.shareBaseUrl || window.location.origin + window.location.pathname).replace(/[?#].*$/, '')
 
   return (
     <div className="space-y-5">
@@ -66,16 +71,39 @@ export function Settings() {
           <Field label="世帯名">
             <input className={inputClass} value={s.householdName} onChange={(e) => updateSettings({ householdName: e.target.value })} />
           </Field>
-          <Field label="共有URLのベース" hint="QRコードが指すURLの先頭。アプリを公開した場所のURLを入れると、家族がそのまま開けます。">
+
+          <Button
+            className="w-full"
+            onClick={() =>
+              setAppQr({
+                title: `${s.householdName}の掲示板`,
+                url: appUrl,
+                hint: 'スマホのカメラで読み取るとスマートピタが開きます',
+              })
+            }
+          >
+            <QrIcon width={18} height={18} /> アプリのQRコードを作成・印刷
+          </Button>
+          <p className="text-xs text-slate-400">
+            家族みんなで使うためのQRです。印刷して冷蔵庫に貼れば、スマホで読み取ってすぐ開けます。
+            <br />
+            各書類ごとのQRは
+            <Link to="/docs" className="font-semibold text-brand-600">［書類］</Link>
+            の各カードの「QRを貼る」から発行・印刷できます。
+          </p>
+
+          <Field label="共有URLのベース（上級者向け・任意）" hint="空欄ならこのアプリのURLが自動で使われます。独自ドメイン等で配信する場合のみ指定してください。">
             <input
               className={inputClass}
               value={s.shareBaseUrl}
               onChange={(e) => updateSettings({ shareBaseUrl: e.target.value.trim() })}
-              placeholder={window.location.origin}
+              placeholder="空欄で自動設定"
             />
           </Field>
         </Card>
       </section>
+
+      <QrModal custom={appQr} onClose={() => setAppQr(null)} />
 
       {/* 家族 */}
       <section>

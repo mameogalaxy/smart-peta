@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useStore } from '../lib/store'
 import { Card, Button, Field, inputClass, Spinner, EmptyState, Badge, Modal } from '../components/ui'
-import { MealIcon, SparkleIcon, CartIcon, TrashIcon } from '../components/icons'
-import { suggestDinner, GeminiError, type MealSuggestion } from '../lib/gemini'
-import { demoDinner } from '../lib/demo'
-import { addDaysISO, formatJpDate, todayISO, uid } from '../lib/util'
+import { MealIcon, SparkleIcon, CartIcon, TrashIcon, CameraIcon } from '../components/icons'
+import { suggestDinner, scanLunchMenu, GeminiError, type MealSuggestion } from '../lib/gemini'
+import { demoDinner, demoLunchMenu } from '../lib/demo'
+import { addDaysISO, downscaleImage, fileToDataUrl, formatJpDate, todayISO, uid } from '../lib/util'
 import type { Recipe } from '../types'
 
 export function Meals() {
@@ -16,6 +16,9 @@ export function Meals() {
   const [suggestion, setSuggestion] = useState<MealSuggestion | null>(null)
   const [usedDemo, setUsedDemo] = useState(false)
   const [recipeView, setRecipeView] = useState<Recipe | null>(null)
+  const lunchRef = useRef<HTMLInputElement>(null)
+  const [scanningLunch, setScanningLunch] = useState(false)
+  const [lunchMsg, setLunchMsg] = useState('')
 
   const meal = state.meals.find((m) => m.date === date)
   const schoolLunch = meal?.schoolLunch ?? ''
@@ -43,6 +46,31 @@ export function Meals() {
       note: meal?.note,
       createdAt: meal?.createdAt ?? Date.now(),
     })
+  }
+
+  async function onLunchFile(file: File) {
+    setLunchMsg('')
+    setScanningLunch(true)
+    try {
+      const raw = await fileToDataUrl(file)
+      const small = await downscaleImage(raw).catch(() => raw)
+      let res
+      try {
+        res = await scanLunchMenu(small, state.settings, todayISO())
+      } catch (e) {
+        if (e instanceof GeminiError && e.message === 'NO_KEY') res = demoLunchMenu()
+        else throw e
+      }
+      store.setSchoolLunches(res.items)
+      const todayItem = res.items.find((i) => i.date === todayISO())
+      setLunchMsg(
+        `${res.items.length}日分の給食を登録しました。` + (todayItem ? `今日は「${todayItem.menu}」です。` : ''),
+      )
+    } catch (e) {
+      setLunchMsg(e instanceof Error ? e.message : '読み取りに失敗しました。')
+    } finally {
+      setScanningLunch(false)
+    }
   }
 
   async function suggest() {
@@ -107,9 +135,39 @@ export function Meals() {
         <button onClick={() => setDate((d) => addDaysISO(d, 1))} className="rounded-lg bg-white px-3 py-2 text-slate-400 ring-1 ring-slate-200 active:bg-slate-50">›</button>
       </div>
 
-      {/* 給食入力 */}
-      <Card className="p-4">
-        <Field label="今日の学校給食（被り回避に使用）" hint="献立提案時、給食と主菜・食材が被らないようAIが考慮します。">
+      {/* 学校給食 */}
+      <Card className="space-y-3 p-4">
+        <div className="flex items-center justify-between">
+          <h2 className="font-bold text-slate-800">学校給食</h2>
+          <input
+            ref={lunchRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) void onLunchFile(f)
+              e.target.value = ''
+            }}
+          />
+          <Button variant="soft" onClick={() => lunchRef.current?.click()} disabled={scanningLunch}>
+            {scanningLunch ? <Spinner /> : <CameraIcon width={18} height={18} />} 献立表を読み取る
+          </Button>
+        </div>
+
+        {schoolLunch ? (
+          <div className="rounded-xl bg-amber-50 p-3">
+            <p className="text-xs font-bold text-amber-700">{formatJpDate(date)}の給食</p>
+            <p className="mt-0.5 text-sm font-semibold text-slate-800">{schoolLunch}</p>
+          </div>
+        ) : (
+          <p className="text-xs text-slate-400">
+            献立表を撮影すると、日付ごとの給食を一括登録できます。今日の給食がすぐ分かり、夕食提案の被り回避にも使われます。
+          </p>
+        )}
+
+        <Field label="給食メモ（手入力・修正）" hint="献立提案時、給食と主菜・食材が被らないようAIが考慮します。">
           <input
             className={inputClass}
             value={schoolLunch}
@@ -117,6 +175,8 @@ export function Meals() {
             placeholder="例: カレーライス、ひじきの煮物"
           />
         </Field>
+
+        {lunchMsg && <p className="rounded-lg bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700">{lunchMsg}</p>}
       </Card>
 
       {/* AI献立 */}

@@ -1,5 +1,5 @@
 import type { AppState } from '../types'
-import type { MealContext, MealSuggestion, ScanResult } from './gemini'
+import type { LunchMenuResult, MealContext, MealSuggestion, ScanResult } from './gemini'
 import { addDaysISO, todayISO, uid } from './util'
 
 /**
@@ -67,6 +67,21 @@ export function demoDinner(ctx: MealContext): MealSuggestion {
     recipeTitle: ctx.availableRecipes.length ? pick.title : undefined,
     ingredients: pick.ingredients,
   }
+}
+
+export function demoLunchMenu(): LunchMenuResult {
+  const base = todayISO()
+  const menus = [
+    'ごはん、鶏のから揚げ、ほうれん草のおひたし、みそ汁、牛乳',
+    'コッペパン、ミートスパゲッティ、海藻サラダ、牛乳',
+    'ごはん、さばの味噌煮、切り干し大根の煮物、すまし汁、牛乳',
+    'カレーライス、福神漬、フルーツポンチ、牛乳',
+    'ごはん、麻婆豆腐、バンサンスー、わかめスープ、牛乳',
+    'ごはん、ハンバーグ、コーンソテー、野菜スープ、牛乳',
+    'きつねうどん、ちくわの磯辺揚げ、おひたし、牛乳',
+  ]
+  const items = menus.map((menu, i) => ({ date: addDaysISO(base, i), menu }))
+  return { items }
 }
 
 /** 初回起動時のサンプルデータ（家族メンバーのみ用意） */
