@@ -20,16 +20,6 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   })
 }
 
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
-  ctx.beginPath()
-  ctx.moveTo(x + r, y)
-  ctx.arcTo(x + w, y, x + w, y + h, r)
-  ctx.arcTo(x + w, y + h, x, y + h, r)
-  ctx.arcTo(x, y + h, x, y, r)
-  ctx.arcTo(x, y, x + w, y, r)
-  ctx.closePath()
-}
-
 const JP_FONT = '"Hiragino Kaku Gothic ProN","Hiragino Sans","Noto Sans JP",system-ui,sans-serif'
 
 export interface BrandedQrOptions {
@@ -49,20 +39,11 @@ export async function makeBrandedQrDataUrl(url: string, opts: BrandedQrOptions =
   await QRCode.toCanvas(qc, url, {
     width: Q,
     margin: 1,
-    errorCorrectionLevel: 'H',
+    errorCorrectionLevel: 'M',
     color: { dark: '#0f172a', light: '#ffffff' },
   })
-  const qctx = qc.getContext('2d')
+  // QR中央へのロゴ合成は行わない（読み取りやすさ・見た目優先）
   const logo = await loadImage(ICON_SRC)
-  if (qctx) {
-    const ls = Math.round(Q * 0.22)
-    const lx = (Q - ls) / 2
-    const ly = (Q - ls) / 2
-    qctx.fillStyle = '#ffffff'
-    roundRect(qctx, lx - 14, ly - 14, ls + 28, ls + 28, 18)
-    qctx.fill()
-    qctx.drawImage(logo, lx, ly, ls, ls)
-  }
 
   const pad = 56
   const headerH = 96
