@@ -112,6 +112,9 @@ export interface Settings {
   /** QRコードが指す公開URLのベース（家族が読み取るURL） */
   shareBaseUrl: string
   householdName: string
+  /** 円換算の単価（100万トークンあたり・有料換算の目安） */
+  yenInPerM: number
+  yenOutPerM: number
 }
 
 export interface AppState {

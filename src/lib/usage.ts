@@ -3,20 +3,29 @@ import { todayISO } from './util'
 const KEY = 'smart-peta:usage'
 
 export interface Usage {
-  /** 累計リクエスト数 */
   totalReq: number
-  /** 累計トークン */
   totalTokens: number
-  /** 集計対象日(YYYY-MM-DD) */
+  totalPrompt: number
+  totalOutput: number
   day: string
-  /** 当日のリクエスト数 */
   dayReq: number
-  /** 当日のトークン */
   dayTokens: number
+  dayPrompt: number
+  dayOutput: number
 }
 
 function empty(): Usage {
-  return { totalReq: 0, totalTokens: 0, day: todayISO(), dayReq: 0, dayTokens: 0 }
+  return {
+    totalReq: 0,
+    totalTokens: 0,
+    totalPrompt: 0,
+    totalOutput: 0,
+    day: todayISO(),
+    dayReq: 0,
+    dayTokens: 0,
+    dayPrompt: 0,
+    dayOutput: 0,
+  }
 }
 
 export function getUsage(): Usage {
@@ -28,6 +37,8 @@ export function getUsage(): Usage {
       u.day = todayISO()
       u.dayReq = 0
       u.dayTokens = 0
+      u.dayPrompt = 0
+      u.dayOutput = 0
     }
     return u
   } catch {
@@ -35,13 +46,18 @@ export function getUsage(): Usage {
   }
 }
 
-/** 1リクエスト分の使用量を記録 */
-export function recordUsage(tokens: number) {
+/** 1リクエスト分（入力/出力トークン）を記録 */
+export function recordUsage(promptTokens: number, outputTokens: number) {
   const u = getUsage()
+  const total = promptTokens + outputTokens
   u.totalReq += 1
-  u.totalTokens += tokens
+  u.totalTokens += total
+  u.totalPrompt += promptTokens
+  u.totalOutput += outputTokens
   u.dayReq += 1
-  u.dayTokens += tokens
+  u.dayTokens += total
+  u.dayPrompt += promptTokens
+  u.dayOutput += outputTokens
   try {
     localStorage.setItem(KEY, JSON.stringify(u))
   } catch {

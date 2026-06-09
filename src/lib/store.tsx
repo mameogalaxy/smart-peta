@@ -41,6 +41,9 @@ const defaultSettings: Settings = {
   geminiModel: DEFAULT_MODEL,
   shareBaseUrl: '',
   householdName: 'わが家',
+  // 有料換算の目安（Gemini Flash想定・約¥150/$）。実際は無料枠なら¥0。
+  yenInPerM: 45,
+  yenOutPerM: 375,
 }
 
 function initialState(): AppState {

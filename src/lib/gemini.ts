@@ -59,10 +59,7 @@ async function generate(
     if (res.ok) {
       const json = await res.json()
       const um = json?.usageMetadata
-      if (um) {
-        const total = um.totalTokenCount ?? (um.promptTokenCount ?? 0) + (um.candidatesTokenCount ?? 0)
-        recordUsage(total)
-      }
+      if (um) recordUsage(um.promptTokenCount ?? 0, um.candidatesTokenCount ?? 0)
       const text: string | undefined =
         json?.candidates?.[0]?.content?.parts?.map((p: Part) => p.text ?? '').join('') ?? undefined
       if (!text) throw new GeminiError('Gemini から有効な応答が得られませんでした。')

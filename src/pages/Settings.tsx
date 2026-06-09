@@ -14,6 +14,12 @@ function nextColor(used: string[]): string {
   return MEMBER_COLORS.find((c) => !used.includes(c)) ?? MEMBER_COLORS[used.length % MEMBER_COLORS.length]
 }
 
+function yen(n: number): string {
+  if (n <= 0) return '¥0'
+  if (n < 10) return '¥' + n.toFixed(2)
+  return '¥' + Math.round(n).toLocaleString()
+}
+
 export function Settings() {
   const { state, updateSettings, setFamily, resetAll } = useStore()
   const confirm = useConfirm()
@@ -84,25 +90,45 @@ export function Settings() {
             <div className="grid grid-cols-2 gap-2 text-sm">
               <div className="rounded-lg bg-slate-50 p-2">
                 <p className="text-[11px] text-slate-400">今日</p>
-                <p className="font-bold text-slate-800">{usage.dayReq}回</p>
-                <p className="text-[11px] text-slate-400">約{usage.dayTokens.toLocaleString()}トークン</p>
+                <p className="font-bold text-slate-800">{yen(usage.dayPrompt / 1e6 * s.yenInPerM + usage.dayOutput / 1e6 * s.yenOutPerM)}</p>
+                <p className="text-[11px] text-slate-400">{usage.dayReq}回・約{usage.dayTokens.toLocaleString()}トークン</p>
               </div>
               <div className="rounded-lg bg-slate-50 p-2">
                 <p className="text-[11px] text-slate-400">累計</p>
-                <p className="font-bold text-slate-800">{usage.totalReq}回</p>
-                <p className="text-[11px] text-slate-400">約{usage.totalTokens.toLocaleString()}トークン</p>
+                <p className="font-bold text-slate-800">{yen(usage.totalPrompt / 1e6 * s.yenInPerM + usage.totalOutput / 1e6 * s.yenOutPerM)}</p>
+                <p className="text-[11px] text-slate-400">{usage.totalReq}回・約{usage.totalTokens.toLocaleString()}トークン</p>
               </div>
             </div>
             <p className="mt-2 text-[11px] text-slate-400">
-              無料枠内であれば料金は¥0です。正確な使用量・上限はGoogle AI Studioの管理画面でも確認できます。
+              ※「有料換算」の目安です。<strong>無料枠内なら実際の料金は¥0</strong>。正確な料金・上限はGoogle AI Studioの管理画面で確認できます。
             </p>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <label className="text-[11px] text-slate-500">
+                入力単価(円/100万)
+                <input
+                  type="number"
+                  className={inputClass + ' mt-0.5 py-1.5'}
+                  value={s.yenInPerM}
+                  onChange={(e) => updateSettings({ yenInPerM: Number(e.target.value) || 0 })}
+                />
+              </label>
+              <label className="text-[11px] text-slate-500">
+                出力単価(円/100万)
+                <input
+                  type="number"
+                  className={inputClass + ' mt-0.5 py-1.5'}
+                  value={s.yenOutPerM}
+                  onChange={(e) => updateSettings({ yenOutPerM: Number(e.target.value) || 0 })}
+                />
+              </label>
+            </div>
             {usage.totalReq > 0 && (
               <button
                 onClick={() => {
                   resetUsage()
                   setUsageTick((n) => n + 1)
                 }}
-                className="mt-1 text-[11px] font-semibold text-slate-400"
+                className="mt-2 text-[11px] font-semibold text-slate-400"
               >
                 カウントをリセット
               </button>
