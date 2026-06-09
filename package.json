@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "build:single": "tsc -b && vite build --mode single --outDir dist-single",
+    "build:pages": "tsc -b && vite build --mode single",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit"
   },
