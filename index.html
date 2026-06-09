@@ -32,14 +32,24 @@
           'error',
           function (e) {
             var t = e.target
-            // アイコン/マニフェスト/CSS/画像などの読み込み失敗は致命的ではないので無視
-            if (t && (t.tagName === 'LINK' || t.tagName === 'IMG')) return
-            if (t && t.tagName === 'SCRIPT') {
-              show('読み込みエラー', 'アプリの読み込みに失敗しました。再読み込みしてください。')
+            // e.error が無い = リソース(外部ファイル)の純粋な読み込み失敗
+            var isResource = t && t !== window && t.tagName && !e.error
+            if (isResource) {
+              // アイコン/マニフェスト/画像の失敗は致命的でないので無視
+              if (t.tagName === 'LINK' || t.tagName === 'IMG') return
+              show(
+                '読み込みエラー',
+                'アプリ本体の読み込みに失敗しました（' + (t.src || t.href || t.tagName) + '）。\nキャッシュの可能性があります。再読み込みしてください。',
+              )
               return
             }
-            // 実行時エラー
-            show('起動エラー', (e && e.message ? e.message : '') + '\n' + (e && e.error && e.error.stack ? e.error.stack : ''))
+            // 実行時エラー（スタックを表示）
+            show(
+              '起動エラー',
+              (e && e.message ? e.message : '') +
+                '\n' +
+                (e && e.error && e.error.stack ? e.error.stack : e && e.error ? String(e.error) : ''),
+            )
           },
           true,
         )
