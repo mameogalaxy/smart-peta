@@ -233,6 +233,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [cloud.status, hid, state.docs, state.events, state.shopping, state.recipes, state.meals, state.inventory, state.family])
 
+  // 自分(この端末の利用者)を家族リストに常に存在させる（同期で消えても再登録）
+  useEffect(() => {
+    const { memberName, memberColor, memberId } = state.settings
+    if (!memberName || !memberId) return
+    setState((s) => {
+      const idx = s.family.findIndex((f) => f.id === memberId)
+      if (idx === -1) {
+        return { ...s, family: [...s.family, { id: memberId, name: memberName, color: memberColor || '#3b82f6' }] }
+      }
+      const cur = s.family[idx]
+      if (cur.name === memberName && cur.color === (memberColor || cur.color)) return s
+      const fam = s.family.slice()
+      fam[idx] = { ...cur, name: memberName, color: memberColor || cur.color }
+      return { ...s, family: fam }
+    })
+  }, [state.settings.memberName, state.settings.memberColor, state.settings.memberId, state.family])
+
   // 永続化（初回ロードはスキップ）
   useEffect(() => {
     if (first.current) {

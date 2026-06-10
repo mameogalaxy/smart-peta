@@ -133,6 +133,8 @@ export interface Settings {
   /** この端末の利用者名・色（家族メンバー登録用） */
   memberName?: string
   memberColor?: string
+  /** この利用者の安定ID（家族リスト上の自分の識別） */
+  memberId?: string
 }
 
 export interface AppState {

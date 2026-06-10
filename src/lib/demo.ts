@@ -1,6 +1,6 @@
 import type { AppState } from '../types'
 import type { FridgeScanResult, LunchMenuResult, MealContext, MealSuggestion, ScanResult } from './gemini'
-import { addDaysISO, todayISO, uid } from './util'
+import { addDaysISO, todayISO } from './util'
 
 /**
  * APIキー未設定でもアプリを体験できるようにするための、
@@ -89,11 +89,7 @@ export function demoLunchMenu(): LunchMenuResult {
   return { items }
 }
 
-/** 初回起動時のサンプルデータ（家族メンバーのみ用意） */
+/** 初回起動時の家族メンバー（自己登録で埋まるため空で開始） */
 export function seedFamily(): AppState['family'] {
-  return [
-    { id: uid(), name: 'パパ', color: '#3b82f6' },
-    { id: uid(), name: 'ママ', color: '#ec4899' },
-    { id: uid(), name: 'こども', color: '#14b8a6' },
-  ]
+  return []
 }

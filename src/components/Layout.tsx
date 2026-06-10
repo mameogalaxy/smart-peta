@@ -4,6 +4,7 @@ import { useStore } from '../lib/store'
 import { useState, type ReactNode } from 'react'
 import { ScanSheet } from './ScanSheet'
 import { Modal } from './ui'
+import { OnboardingGate } from './OnboardingGate'
 import { ICON_SRC } from '../brand'
 
 const NAV = [
@@ -134,6 +135,7 @@ export function Layout() {
       </Modal>
 
       <ScanSheet open={scanOpen} onClose={() => setScanOpen(false)} />
+      <OnboardingGate />
 
       {/* ボトムナビ */}
       <nav className="safe-bottom fixed inset-x-0 bottom-0 z-30 mx-auto max-w-lg border-t border-slate-200 bg-white/95 backdrop-blur">
