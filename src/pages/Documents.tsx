@@ -141,7 +141,7 @@ export function Documents() {
         <EmptyState
           icon={<DocIcon width={40} height={40} />}
           title="書類がありません"
-          desc="右下のカメラから、冷蔵庫に貼られたプリントをスキャンして取り込みましょう。"
+          desc="下の ＋ ボタン →「書類をスキャン」から、プリントを撮影/選択して取り込みましょう。"
         />
       ) : (
         <div className="space-y-2.5">

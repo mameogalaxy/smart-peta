@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { Modal, Button, Field, inputClass, Spinner, Badge } from './ui'
-import { CameraIcon, SparkleIcon } from './icons'
+import { CameraIcon, CloseIcon, SparkleIcon } from './icons'
 import { useStore } from '../lib/store'
 import { scanDocument, analyzeDocumentText, GeminiError, type ScanResult } from '../lib/gemini'
 import { demoScan } from '../lib/demo'
@@ -17,7 +17,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
   const fileRef = useRef<HTMLInputElement>(null)
 
   const [phase, setPhase] = useState<Phase>('pick')
-  const [image, setImage] = useState<string>('')
+  const [images, setImages] = useState<string[]>([])
   const [error, setError] = useState<string>('')
   const [usedDemo, setUsedDemo] = useState(false)
   const [result, setResult] = useState<ScanResult | null>(null)
@@ -35,7 +35,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
 
   function reset() {
     setPhase('pick')
-    setImage('')
+    setImages([])
     setError('')
     setResult(null)
     setUsedDemo(false)
@@ -53,12 +53,14 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
     onClose()
   }
 
-  async function onFile(file: File) {
+  async function onFiles(files: FileList) {
     setError('')
-    const raw = await fileToDataUrl(file)
-    const small = await downscaleImage(raw).catch(() => raw)
-    setImage(small)
-    setInstruction('')
+    const smalls: string[] = []
+    for (const f of Array.from(files)) {
+      const raw = await fileToDataUrl(f)
+      smalls.push(await downscaleImage(raw).catch(() => raw))
+    }
+    setImages((prev) => [...prev, ...smalls])
     setPhase('confirm')
   }
 
@@ -72,14 +74,15 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
     setPhase('review')
   }
 
-  async function analyze(img: string) {
+  async function analyze() {
+    if (!images.length) return
     setPhase('analyzing')
     setError('')
     try {
       let res: ScanResult
       let demo = false
       try {
-        res = await scanDocument(img, settings, todayISO(), instruction.trim() || undefined)
+        res = await scanDocument(images, settings, todayISO(), instruction.trim() || undefined)
       } catch (e) {
         if (e instanceof GeminiError && e.message === 'NO_KEY') {
           res = demoScan()
@@ -91,7 +94,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
       toReview(res, { demo })
     } catch (e) {
       setError(e instanceof Error ? e.message : '解析に失敗しました。')
-      setPhase('pick')
+      setPhase('confirm')
     }
   }
 
@@ -107,7 +110,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
       text: t,
       events: extractDates(t, todayISO()),
     }
-    setImage('')
+    setImages([])
     toReview(res, { manual: true })
   }
 
@@ -136,6 +139,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
     if (!result) return
     const now = Date.now()
     const docId = uid()
+    const image = images[0] ?? ''
     store.addDoc({
       id: docId,
       title: title || result.title,
@@ -194,16 +198,16 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
       {phase === 'pick' && (
         <div>
           <p className="mb-4 text-sm text-slate-500">
-            プリントを撮影すると、AIが文字を読み取って自動で分類・整理します。
+            プリントを撮影/選択すると、AIが文字を読み取って自動で分類・整理します。<strong>複数枚</strong>まとめてもOK。
           </p>
           <input
             ref={fileRef}
             type="file"
             accept="image/*"
+            multiple
             className="hidden"
             onChange={(e) => {
-              const f = e.target.files?.[0]
-              if (f) void onFile(f)
+              if (e.target.files && e.target.files.length) void onFiles(e.target.files)
               e.target.value = ''
             }}
           />
@@ -212,7 +216,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
             className="flex w-full flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-brand-300 bg-brand-50 py-10 text-brand-600 active:bg-brand-100"
           >
             <CameraIcon width={40} height={40} />
-            <span className="font-bold">写真を撮る / 選ぶ</span>
+            <span className="font-bold">写真を撮る / 選ぶ（複数可）</span>
             <span className="text-xs text-brand-500">学校のプリント・ゴミの日・レシピなど</span>
           </button>
           {error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
@@ -243,7 +247,28 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
 
       {phase === 'confirm' && (
         <div className="space-y-3">
-          {image && <img src={image} alt="" className="mx-auto max-h-56 rounded-xl object-contain" />}
+          <div className="flex flex-wrap gap-2">
+            {images.map((src, i) => (
+              <div key={i} className="relative">
+                <img src={src} alt="" className="h-20 w-16 rounded-lg object-cover ring-1 ring-slate-200" />
+                <button
+                  onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
+                  className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-slate-700 text-white"
+                  aria-label="削除"
+                >
+                  <CloseIcon width={12} height={12} />
+                </button>
+              </div>
+            ))}
+            <button
+              onClick={() => fileRef.current?.click()}
+              className="flex h-20 w-16 flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-brand-300 text-brand-500"
+            >
+              <CameraIcon width={20} height={20} />
+              <span className="text-[10px] font-bold">追加</span>
+            </button>
+          </div>
+          <p className="text-xs text-slate-400">{images.length}枚を1つの書類としてまとめて読み取ります。</p>
           <Field label="AIへの指示（任意）" hint="例: 提出期限だけ拾って / 材料を英語で / ゴミの分別を箇条書きで。空欄でもOK。">
             <textarea
               className={`${inputClass} min-h-20`}
@@ -257,7 +282,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
             <Button variant="ghost" className="flex-1" onClick={reset}>
               戻る
             </Button>
-            <Button className="flex-[2]" onClick={() => analyze(image)}>
+            <Button className="flex-[2]" disabled={!images.length} onClick={analyze}>
               <SparkleIcon width={18} height={18} /> AIで解析
             </Button>
           </div>
@@ -269,7 +294,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
 
       {phase === 'analyzing' && (
         <div className="flex flex-col items-center py-10">
-          {image && <img src={image} alt="" className="mb-4 max-h-48 rounded-xl object-contain" />}
+          {images[0] && <img src={images[0]} alt="" className="mb-4 max-h-48 rounded-xl object-contain" />}
           <div className="flex items-center gap-2 font-semibold text-brand-600">
             <Spinner /> AIが解析中…
           </div>
@@ -296,7 +321,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
           )}
           {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
           <div className="flex gap-3">
-            {image && <img src={image} alt="" className="h-24 w-20 rounded-lg object-cover ring-1 ring-slate-200" />}
+            {images[0] && <img src={images[0]} alt="" className="h-24 w-20 rounded-lg object-cover ring-1 ring-slate-200" />}
             <div className="flex-1">
               <Field label="タイトル">
                 <input className={inputClass} value={title} onChange={(e) => setTitle(e.target.value)} />

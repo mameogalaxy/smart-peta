@@ -164,30 +164,30 @@ const SCAN_SCHEMA = {
  * 書類画像を Gemini で解析（OCR + 自動分類 + 予定抽出 + レシピ抽出）。
  */
 export async function scanDocument(
-  imageDataUrl: string,
+  images: string | string[],
   settings: Settings,
   today: string,
   instruction?: string,
 ): Promise<ScanResult> {
-  const { mime, base64 } = splitDataUrl(imageDataUrl)
-  const prompt = `You are a household paper-organizing assistant. Analyze a photo of a paper often stuck on a fridge (school handout, garbage-collection calendar, recipe clipping, or other notice). Today is ${today}.
+  const list = Array.isArray(images) ? images : [images]
+  const multi = list.length > 1
+  const prompt = `You are a household paper-organizing assistant. Analyze ${multi ? `${list.length} photos that are pages of ONE document (or related printouts). Combine them` : 'a photo of a paper'} often stuck on a fridge (school handout, garbage-collection calendar, recipe clipping, or other notice). Today is ${today}.
 Respond with JSON only. ALL text values must be in Japanese.
-1. OCR all text in the image into "text" (Japanese).
+1. OCR all text${multi ? ' from every page, in order,' : ''} into "text" (Japanese).
 2. "category": one of school / garbage / recipe / utility(電気・ガス・水道・光熱費の請求や検針) / manual(取扱説明書・保証書) / work(仕事・業務関連) / other.
-3. "title": short descriptive headline. "summary": 1-2 sentence summary.
-4. "events": date-bearing items (deadlines, events). "date" as YYYY-MM-DD (if year missing, infer the nearest upcoming year).
+3. "title": short descriptive headline. "summary": 1-2 sentence summary covering all pages.
+4. "events": date-bearing items (deadlines, events) from any page. "date" as YYYY-MM-DD (if year missing, infer the nearest upcoming year).
 5. Only if it is a recipe, fill "recipe" with ingredients, steps, servings.${
-    instruction ? `\n6. Also follow this user instruction (reflect it in title/summary as appropriate): ${instruction}` : ''
+    instruction ? `\n6. Also follow this user instruction: ${instruction}` : ''
   }`
 
-  const raw = await generate(
-    [
-      { text: prompt },
-      { inline_data: { mime_type: mime, data: base64 } },
-    ],
-    settings,
-    { schema: SCAN_SCHEMA, temperature: 0.2 },
-  )
+  const parts: { text?: string; inline_data?: { mime_type: string; data: string } }[] = [{ text: prompt }]
+  for (const img of list) {
+    const { mime, base64 } = splitDataUrl(img)
+    parts.push({ inline_data: { mime_type: mime, data: base64 } })
+  }
+
+  const raw = await generate(parts, settings, { schema: SCAN_SCHEMA, temperature: 0.2 })
   return parseJson<ScanResult>(raw)
 }
 

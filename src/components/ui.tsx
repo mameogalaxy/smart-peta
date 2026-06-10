@@ -120,7 +120,7 @@ export function Modal({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="animate-pop relative z-10 max-h-[88vh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:max-w-lg sm:rounded-3xl safe-bottom">
+      <div className="animate-pop safe-bottom relative z-10 max-h-[88vh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 pb-8 shadow-xl sm:max-w-lg sm:rounded-3xl">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-lg font-bold">{title}</h3>
           <button onClick={onClose} className="rounded-full p-1.5 text-slate-400 active:bg-slate-100">
