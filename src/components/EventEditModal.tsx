@@ -1,0 +1,124 @@
+import { useEffect, useState } from 'react'
+import { useStore } from '../lib/store'
+import { Modal, Button, Field, inputClass } from './ui'
+import { DOC_CATEGORIES, type CalendarEvent, type DocCategory } from '../types'
+import { CategoryIcon } from './CategoryIcon'
+import { Avatar } from './Avatar'
+import { useConfirm } from '../lib/confirm'
+
+/** 既存の予定を編集・削除するシート（ホーム/カレンダーから共通利用） */
+export function EventEditModal({ event, onClose }: { event: CalendarEvent | null; onClose: () => void }) {
+  const { state, updateEvent, removeEvent } = useStore()
+  const confirm = useConfirm()
+  const [title, setTitle] = useState('')
+  const [date, setDate] = useState('')
+  const [time, setTime] = useState('')
+  const [category, setCategory] = useState<DocCategory>('other')
+  const [assignee, setAssignee] = useState<string>('')
+  const [done, setDone] = useState(false)
+
+  useEffect(() => {
+    if (event) {
+      setTitle(event.title)
+      setDate(event.date)
+      setTime(event.time ?? '')
+      setCategory(event.category)
+      setAssignee(event.assignee ?? '')
+      setDone(event.done)
+    }
+  }, [event])
+
+  if (!event) return null
+
+  function save() {
+    if (!event || !title.trim()) return
+    updateEvent(event.id, {
+      title: title.trim(),
+      date,
+      time: time || undefined,
+      category,
+      assignee: assignee || undefined,
+      done,
+    })
+    onClose()
+  }
+
+  return (
+    <Modal open={!!event} onClose={onClose} title="予定を編集">
+      <div className="space-y-3">
+        <Field label="予定名">
+          <input className={inputClass} value={title} onChange={(e) => setTitle(e.target.value)} />
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="日付">
+            <input type="date" className={inputClass} value={date} onChange={(e) => setDate(e.target.value)} />
+          </Field>
+          <Field label="時刻">
+            <input type="time" className={inputClass} value={time} onChange={(e) => setTime(e.target.value)} />
+          </Field>
+        </div>
+
+        <div>
+          <span className="mb-1 block text-sm font-semibold text-slate-600">分類</span>
+          <div className="flex flex-wrap gap-2">
+            {DOC_CATEGORIES.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => setCategory(c.id)}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold ${category === c.id ? 'text-white' : 'bg-slate-100 text-slate-500'}`}
+                style={category === c.id ? { backgroundColor: c.color } : undefined}
+              >
+                <CategoryIcon cat={c.id} size={15} /> {c.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {state.family.length > 0 && (
+          <div>
+            <span className="mb-1 block text-sm font-semibold text-slate-600">担当</span>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setAssignee('')}
+                className={`rounded-full px-3 py-1.5 text-sm font-semibold ${assignee === '' ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-500'}`}
+              >
+                なし
+              </button>
+              {state.family.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setAssignee(f.id)}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold ${assignee === f.id ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-500'}`}
+                >
+                  <Avatar member={f} size={18} /> {f.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <label className="flex items-center gap-2 text-sm font-semibold text-slate-600">
+          <input type="checkbox" checked={done} onChange={(e) => setDone(e.target.checked)} className="h-5 w-5 accent-brand-500" />
+          完了にする
+        </label>
+
+        <div className="flex gap-2 pt-1">
+          <Button
+            variant="danger"
+            onClick={async () => {
+              if (await confirm({ title: '予定を削除', message: `「${event.title}」を削除しますか？`, danger: true })) {
+                removeEvent(event.id)
+                onClose()
+              }
+            }}
+          >
+            削除
+          </Button>
+          <Button className="flex-1" disabled={!title.trim()} onClick={save}>
+            保存
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}

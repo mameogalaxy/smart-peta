@@ -10,6 +10,7 @@ import { Avatar } from '../components/Avatar'
 import { googleCalendarUrl, addToCalendarIcs } from '../lib/calendar'
 import { extractEventsFromImage, GeminiError } from '../lib/gemini'
 import { demoScan } from '../lib/demo'
+import { EventEditModal } from '../components/EventEditModal'
 
 const WEEK = ['日', '月', '火', '水', '木', '金', '土']
 
@@ -79,6 +80,8 @@ export function Calendar() {
   const [selected, setSelected] = useState<string>(today)
   const [adding, setAdding] = useState(false)
   const [calEvent, setCalEvent] = useState<CalendarEvent | null>(null)
+  const [editEvent, setEditEvent] = useState<CalendarEvent | null>(null)
+  const [filterMember, setFilterMember] = useState<string>('all')
   const [params, setParams] = useSearchParams()
 
   // 中央「＋」メニューからの「予定を追加」(?add=1) で追加モーダルを開く
@@ -94,11 +97,12 @@ export function Calendar() {
   const eventsByDate = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>()
     for (const e of state.events) {
+      if (filterMember !== 'all' && e.assignee !== filterMember) continue
       if (!map.has(e.date)) map.set(e.date, [])
       map.get(e.date)!.push(e)
     }
     return map
-  }, [state.events])
+  }, [state.events, filterMember])
 
   const cells = useMemo(() => buildMonth(cursor.y, cursor.m), [cursor])
   const dayEvents = (eventsByDate.get(selected) ?? []).sort((a, b) =>
@@ -186,6 +190,31 @@ export function Calendar() {
         </div>
       </Card>
 
+      {/* 表示する人で絞り込み（全員 / 自分 / 各メンバー） */}
+      {state.family.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          <button
+            onClick={() => setFilterMember('all')}
+            className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold ${filterMember === 'all' ? 'bg-brand-500 text-white' : 'bg-white text-slate-500 ring-1 ring-slate-200'}`}
+          >
+            家族全員
+          </button>
+          {state.family.map((f) => {
+            const active = filterMember === f.id
+            const isSelf = f.id === state.settings.memberId
+            return (
+              <button
+                key={f.id}
+                onClick={() => setFilterMember(f.id)}
+                className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold ${active ? 'bg-brand-500 text-white' : 'bg-white text-slate-500 ring-1 ring-slate-200'}`}
+              >
+                <Avatar member={f} size={18} /> {isSelf ? `${f.name}(自分)` : f.name}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       <input
         ref={photoRef}
         type="file"
@@ -217,7 +246,7 @@ export function Calendar() {
         <EmptyState icon={<CalendarIcon width={36} height={36} />} title="この日の予定はありません" />
       ) : (
         <>
-          <p className="-mt-1 text-xs text-slate-400">予定をタップすると、時刻・通知を指定してカレンダー（Google / 端末）に追加できます。</p>
+          <p className="-mt-1 text-xs text-slate-400">予定をタップで編集。「通知」でGoogle/端末カレンダーに追加できます。</p>
           <div className="space-y-2">
             {dayEvents.map((e) => (
               <EventRow
@@ -225,6 +254,7 @@ export function Calendar() {
                 e={e}
                 member={state.family.find((f) => f.id === e.assignee)}
                 onToggleDone={() => updateEvent(e.id, { done: !e.done })}
+                onEdit={() => setEditEvent(e)}
                 onAddCalendar={() => setCalEvent(e)}
                 onDelete={() => removeEvent(e.id)}
               />
@@ -279,6 +309,8 @@ export function Calendar() {
           onPersist={(patch) => updateEvent(calEvent.id, patch)}
         />
       )}
+
+      <EventEditModal event={editEvent} onClose={() => setEditEvent(null)} />
     </div>
   )
 }
@@ -384,12 +416,14 @@ function EventRow({
   e,
   member,
   onToggleDone,
+  onEdit,
   onAddCalendar,
   onDelete,
 }: {
   e: CalendarEvent
   member?: FamilyMember
   onToggleDone: () => void
+  onEdit: () => void
   onAddCalendar: () => void
   onDelete: () => void
 }) {
@@ -405,7 +439,7 @@ function EventRow({
       >
         <CheckIcon width={16} height={16} />
       </button>
-      <button onClick={onAddCalendar} className="min-w-0 flex-1 text-left">
+      <button onClick={onEdit} className="min-w-0 flex-1 text-left">
         <p className={`truncate font-semibold ${e.done ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
           {e.title}
         </p>

@@ -3,18 +3,20 @@ import { Link } from 'react-router-dom'
 import { useStore } from '../lib/store'
 import { Card, Badge, SectionTitle, EmptyState } from '../components/ui'
 import { DOC_CATEGORIES } from '../types'
-import type { DocItem } from '../types'
+import type { CalendarEvent, DocItem } from '../types'
 import { formatJpDate, relativeDays, todayISO } from '../lib/util'
 import { QrModal } from '../components/QrModal'
 import { BellIcon, CalendarIcon, CartIcon, DocIcon, MealIcon, QrIcon, SchoolIcon } from '../components/icons'
 import { CategoryIcon } from '../components/CategoryIcon'
 import { Avatar } from '../components/Avatar'
 import { ProfileEditModal } from '../components/ProfileEditModal'
+import { EventEditModal } from '../components/EventEditModal'
 
 export function Home() {
   const { state, cloud } = useStore()
   const [qrDoc, setQrDoc] = useState<DocItem | null>(null)
   const [editProfile, setEditProfile] = useState(false)
+  const [editEvent, setEditEvent] = useState<CalendarEvent | null>(null)
   const today = todayISO()
   const me = {
     name: state.settings.memberName || 'ゲスト',
@@ -83,7 +85,7 @@ export function Home() {
               const cat = DOC_CATEGORIES.find((c) => c.id === e.category)
               const soon = e.date === today
               return (
-                <Card key={e.id} className="flex items-center gap-3 p-3">
+                <Card key={e.id} onClick={() => setEditEvent(e)} className="flex items-center gap-3 p-3">
                   <div
                     className="flex h-12 w-12 flex-col items-center justify-center rounded-xl text-white"
                     style={{ backgroundColor: cat?.color }}
@@ -199,6 +201,7 @@ export function Home() {
       )}
 
       <QrModal doc={qrDoc} onClose={() => setQrDoc(null)} />
+      <EventEditModal event={editEvent} onClose={() => setEditEvent(null)} />
     </div>
   )
 }
