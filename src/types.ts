@@ -95,6 +95,8 @@ export interface FamilyMember {
   name: string
   /** アバターの色（頭文字を表示する円の背景色） */
   color: string
+  /** アバター写真（dataURL・任意）。あれば写真を優先表示 */
+  photo?: string
 }
 
 /** 家族アバターに使う色パレット */
@@ -130,9 +132,10 @@ export interface Settings {
   householdId?: string
   /** 世帯の表示名 */
   householdName2?: string
-  /** この端末の利用者名・色（家族メンバー登録用） */
+  /** この端末の利用者名・色・写真（家族メンバー登録用） */
   memberName?: string
   memberColor?: string
+  memberPhoto?: string
   /** この利用者の安定ID（家族リスト上の自分の識別） */
   memberId?: string
 }

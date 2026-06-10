@@ -228,27 +228,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const ser = JSON.stringify(items)
       if (ser !== lastSync.current[col]) {
         lastSync.current[col] = ser
-        setDoc(fsDoc(getDb(), 'households', hid, 'data', col), { items }).catch(() => {})
+        // JSON.parse(ser) で undefined フィールドを除去（Firestoreは undefined 不可）
+        setDoc(fsDoc(getDb(), 'households', hid, 'data', col), { items: JSON.parse(ser) }).catch(() => {})
       }
     }
   }, [cloud.status, hid, state.docs, state.events, state.shopping, state.recipes, state.meals, state.inventory, state.family])
 
   // 自分(この端末の利用者)を家族リストに常に存在させる（同期で消えても再登録）
   useEffect(() => {
-    const { memberName, memberColor, memberId } = state.settings
+    const { memberName, memberColor, memberId, memberPhoto } = state.settings
     if (!memberName || !memberId) return
     setState((s) => {
       const idx = s.family.findIndex((f) => f.id === memberId)
-      if (idx === -1) {
-        return { ...s, family: [...s.family, { id: memberId, name: memberName, color: memberColor || '#3b82f6' }] }
-      }
+      const self = { id: memberId, name: memberName, color: memberColor || '#3b82f6', photo: memberPhoto || undefined }
+      if (idx === -1) return { ...s, family: [...s.family, self] }
       const cur = s.family[idx]
-      if (cur.name === memberName && cur.color === (memberColor || cur.color)) return s
+      if (cur.name === self.name && cur.color === self.color && cur.photo === self.photo) return s
       const fam = s.family.slice()
-      fam[idx] = { ...cur, name: memberName, color: memberColor || cur.color }
+      fam[idx] = { ...cur, ...self }
       return { ...s, family: fam }
     })
-  }, [state.settings.memberName, state.settings.memberColor, state.settings.memberId, state.family])
+  }, [state.settings.memberName, state.settings.memberColor, state.settings.memberPhoto, state.settings.memberId, state.family])
 
   // 永続化（初回ロードはスキップ）
   useEffect(() => {
@@ -350,8 +350,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // 現在のローカルデータを世帯へアップロード
         for (const col of SYNCED) {
           const items = stripImages(col, state[col] as unknown[])
-          lastSync.current[col] = JSON.stringify(items)
-          await setDoc(fsDoc(getDb(), 'households', newHid, 'data', col), { items })
+          const ser = JSON.stringify(items)
+          lastSync.current[col] = ser
+          await setDoc(fsDoc(getDb(), 'households', newHid, 'data', col), { items: JSON.parse(ser) })
         }
         patch((s) => ({ ...s, settings: { ...s.settings, householdId: newHid, householdName2: name || 'わが家' } }))
         return newHid

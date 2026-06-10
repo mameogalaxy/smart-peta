@@ -1,7 +1,17 @@
 import type { FamilyMember } from '../types'
 
-/** 家族メンバーのアバター（頭文字を色付き円で表示・絵文字不使用） */
-export function Avatar({ member, size = 28 }: { member: Pick<FamilyMember, 'name' | 'color'>; size?: number }) {
+/** 家族メンバーのアバター。写真があれば写真、無ければ頭文字＋色（絵文字不使用）。 */
+export function Avatar({ member, size = 28 }: { member: Pick<FamilyMember, 'name' | 'color' | 'photo'>; size?: number }) {
+  if (member.photo) {
+    return (
+      <img
+        src={member.photo}
+        alt={member.name}
+        className="shrink-0 rounded-full object-cover"
+        style={{ width: size, height: size }}
+      />
+    )
+  }
   const initial = [...member.name][0] ?? '?'
   return (
     <span

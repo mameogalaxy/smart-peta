@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStore } from '../lib/store'
 import { getUsage, resetUsage } from '../lib/usage'
 import { Card, Button, Field, inputClass } from '../components/ui'
-import { PlusIcon, TrashIcon, QrIcon } from '../components/icons'
+import { CameraIcon, PlusIcon, TrashIcon, QrIcon } from '../components/icons'
+import { downscaleImage, fileToDataUrl } from '../lib/util'
 import { Avatar } from '../components/Avatar'
 import { QrModal } from '../components/QrModal'
 import { MEMBER_COLORS } from '../types'
@@ -33,6 +34,13 @@ export function Settings() {
   const [cloudBusy, setCloudBusy] = useState(false)
   const [cloudMsg, setCloudMsg] = useState('')
   const [inviteQr, setInviteQr] = useState<{ title: string; url: string; hint: string } | null>(null)
+  const profileFileRef = useRef<HTMLInputElement>(null)
+
+  async function onProfilePhoto(file: File) {
+    const raw = await fileToDataUrl(file)
+    const small = await downscaleImage(raw, 256, 0.85).catch(() => raw)
+    updateSettings({ memberPhoto: small })
+  }
   const [newName, setNewName] = useState('')
   const [appQr, setAppQr] = useState<{ title: string; url: string; hint: string } | null>(null)
   const [usageTick, setUsageTick] = useState(0)
@@ -393,7 +401,53 @@ export function Settings() {
       <section>
         <h2 className="mb-2 text-sm font-bold text-slate-500">家族メンバー</h2>
         <Card className="space-y-2 p-4">
-          {state.family.map((f) => (
+          {/* あなたのプロフィール */}
+          <div className="space-y-2 rounded-xl bg-brand-50/60 p-3">
+            <p className="text-xs font-bold text-brand-700">あなたのプロフィール</p>
+            <input
+              ref={profileFileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (f) void onProfilePhoto(f)
+                e.target.value = ''
+              }}
+            />
+            <div className="flex items-center gap-3">
+              <button onClick={() => profileFileRef.current?.click()} className="relative active:opacity-80" aria-label="写真を変更">
+                <Avatar member={{ name: s.memberName || '？', color: s.memberColor || '#3b82f6', photo: s.memberPhoto }} size={52} />
+                <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-brand-500 text-white ring-2 ring-white">
+                  <CameraIcon width={11} height={11} />
+                </span>
+              </button>
+              <input
+                className={inputClass}
+                value={s.memberName ?? ''}
+                onChange={(e) => updateSettings({ memberName: e.target.value })}
+                placeholder="あなたの名前"
+              />
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {MEMBER_COLORS.map((col) => (
+                <button
+                  key={col}
+                  onClick={() => updateSettings({ memberColor: col })}
+                  className={`h-6 w-6 rounded-full transition ${(s.memberColor || '#3b82f6') === col ? 'ring-2 ring-slate-700 ring-offset-2' : ''}`}
+                  style={{ backgroundColor: col }}
+                  aria-label="色を選ぶ"
+                />
+              ))}
+            </div>
+            {s.memberPhoto && (
+              <button onClick={() => updateSettings({ memberPhoto: undefined })} className="text-xs font-semibold text-slate-400">
+                写真を外す
+              </button>
+            )}
+          </div>
+
+          {state.family.filter((f) => f.id !== s.memberId).map((f) => (
             <div key={f.id} className="space-y-2 rounded-xl border border-slate-100 p-2">
               <div className="flex items-center gap-2">
                 <Avatar member={f} size={36} />

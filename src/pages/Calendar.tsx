@@ -1,19 +1,63 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useStore } from '../lib/store'
-import { Card, Badge, Button, Modal, Field, inputClass, EmptyState } from '../components/ui'
+import { Card, Badge, Button, Modal, Field, inputClass, EmptyState, Spinner } from '../components/ui'
 import { DOC_CATEGORIES, type CalendarEvent, type DocCategory, type FamilyMember } from '../types'
-import { formatJpDate, parseISO, relativeDays, todayISO, uid } from '../lib/util'
-import { CalendarIcon, CheckIcon, PlusIcon, TrashIcon, ShareIcon } from '../components/icons'
+import { downscaleImage, fileToDataUrl, formatJpDate, parseISO, relativeDays, todayISO, uid } from '../lib/util'
+import { CalendarIcon, CameraIcon, CheckIcon, PlusIcon, TrashIcon, ShareIcon } from '../components/icons'
 import { CategoryIcon } from '../components/CategoryIcon'
 import { Avatar } from '../components/Avatar'
 import { googleCalendarUrl, addToCalendarIcs } from '../lib/calendar'
+import { scanDocument, GeminiError } from '../lib/gemini'
+import { demoScan } from '../lib/demo'
 
 const WEEK = ['日', '月', '火', '水', '木', '金', '土']
 
 export function Calendar() {
-  const { state, addEvent, updateEvent, removeEvent } = useStore()
+  const { state, addEvent, addEvents, updateEvent, removeEvent } = useStore()
   const today = todayISO()
+  const photoRef = useRef<HTMLInputElement>(null)
+  const [scanningPhoto, setScanningPhoto] = useState(false)
+  const [photoMsg, setPhotoMsg] = useState('')
+
+  async function onPhotoEvents(file: File) {
+    setScanningPhoto(true)
+    setPhotoMsg('')
+    try {
+      const raw = await fileToDataUrl(file)
+      const small = await downscaleImage(raw).catch(() => raw)
+      let res
+      try {
+        res = await scanDocument(small, state.settings, todayISO())
+      } catch (e) {
+        if (e instanceof GeminiError && e.message === 'NO_KEY') res = demoScan()
+        else throw e
+      }
+      const evs: CalendarEvent[] = res.events.map((ev) => ({
+        id: uid(),
+        title: ev.title,
+        date: ev.date,
+        time: ev.time,
+        note: ev.note,
+        category: res.category,
+        remind: true,
+        remindMinutes: 10,
+        done: false,
+        createdAt: Date.now(),
+      }))
+      if (evs.length) {
+        addEvents(evs)
+        setSelected(evs[0].date)
+        setPhotoMsg(`${evs.length}件の予定を追加しました。`)
+      } else {
+        setPhotoMsg('予定（日付）が見つかりませんでした。')
+      }
+    } catch (e) {
+      setPhotoMsg(e instanceof Error ? e.message : '読み取りに失敗しました。')
+    } finally {
+      setScanningPhoto(false)
+    }
+  }
   const [cursor, setCursor] = useState(() => {
     const d = new Date()
     return { y: d.getFullYear(), m: d.getMonth() }
@@ -128,17 +172,32 @@ export function Calendar() {
         </div>
       </Card>
 
-      <div className="flex items-center justify-between">
-        <h2 className="font-bold text-slate-700">{formatJpDate(selected)} の予定</h2>
-        <div className="flex gap-2">
+      <input
+        ref={photoRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          if (f) void onPhotoEvents(f)
+          e.target.value = ''
+        }}
+      />
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="shrink-0 font-bold text-slate-700">{formatJpDate(selected)}</h2>
+        <div className="flex flex-wrap justify-end gap-1.5">
           <Button variant="ghost" onClick={shareSchedule}>
-            <ShareIcon width={18} height={18} /> 共有
+            <ShareIcon width={16} height={16} /> 共有
+          </Button>
+          <Button variant="soft" onClick={() => photoRef.current?.click()} disabled={scanningPhoto}>
+            {scanningPhoto ? <Spinner /> : <CameraIcon width={16} height={16} />} 写真から
           </Button>
           <Button variant="soft" onClick={() => setAdding(true)}>
-            <PlusIcon width={18} height={18} /> 追加
+            <PlusIcon width={16} height={16} /> 追加
           </Button>
         </div>
       </div>
+      {photoMsg && <p className="rounded-lg bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700">{photoMsg}</p>}
 
       {dayEvents.length === 0 ? (
         <EmptyState icon={<CalendarIcon width={36} height={36} />} title="この日の予定はありません" />
