@@ -62,20 +62,21 @@ export function Settings() {
               <Button variant="ghost" onClick={() => setShowKey((v) => !v)}>
                 {showKey ? '隠す' : '表示'}
               </Button>
+              {s.geminiApiKey && (
+                <Button
+                  variant="danger"
+                  aria-label="APIキーを削除"
+                  onClick={async () => {
+                    if (await confirm({ title: 'APIキーを削除', message: '保存しているGemini APIキーを削除しますか？', confirmLabel: '削除', danger: true })) {
+                      updateSettings({ geminiApiKey: '' })
+                    }
+                  }}
+                >
+                  <TrashIcon width={18} height={18} />
+                </Button>
+              )}
             </div>
           </Field>
-          {s.geminiApiKey && (
-            <Button
-              variant="danger"
-              onClick={async () => {
-                if (await confirm({ title: 'APIキーを削除', message: '保存しているGemini APIキーを削除しますか？', confirmLabel: '削除', danger: true })) {
-                  updateSettings({ geminiApiKey: '' })
-                }
-              }}
-            >
-              <TrashIcon width={16} height={16} /> APIキーを削除
-            </Button>
-          )}
 
           <Field
             label="2つ目のAPIキー（予備・任意）"
@@ -93,16 +94,21 @@ export function Settings() {
               <Button variant="ghost" onClick={() => setShowKey2((v) => !v)}>
                 {showKey2 ? '隠す' : '表示'}
               </Button>
+              {s.geminiApiKey2 && (
+                <Button
+                  variant="danger"
+                  aria-label="2つ目のAPIキーを削除"
+                  onClick={async () => {
+                    if (await confirm({ title: 'APIキーを削除', message: '2つ目のGemini APIキーを削除しますか？', confirmLabel: '削除', danger: true })) {
+                      updateSettings({ geminiApiKey2: '' })
+                    }
+                  }}
+                >
+                  <TrashIcon width={18} height={18} />
+                </Button>
+              )}
             </div>
           </Field>
-          {s.geminiApiKey2 && (
-            <button
-              onClick={() => updateSettings({ geminiApiKey2: '' })}
-              className="text-xs font-semibold text-slate-400"
-            >
-              2つ目のキーを削除
-            </button>
-          )}
 
           <Field label="モデル（メイン）" hint="書類のOCRなど精度重視の処理に使用。既定の gemini-flash-latest は常に最新の無料Flash。">
             <input
