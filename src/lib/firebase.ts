@@ -102,6 +102,27 @@ export function decodeInvite(s: string): { c: string; h: string } | null {
   }
 }
 
+/** 設定共有QR用：APIキー・モデルをURLセーフな文字列にまとめる */
+export interface SetupPayload {
+  k?: string
+  k2?: string
+  m?: string
+  ml?: string
+}
+export function encodeSetup(p: SetupPayload): string {
+  const payload = JSON.stringify(p)
+  return btoa(unescape(encodeURIComponent(payload))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+export function decodeSetup(s: string): SetupPayload | null {
+  try {
+    const b = s.replace(/-/g, '+').replace(/_/g, '/')
+    const o = JSON.parse(decodeURIComponent(escape(atob(b))))
+    return o && typeof o === 'object' ? (o as SetupPayload) : null
+  } catch {
+    return null
+  }
+}
+
 /** 短いランダムID（世帯ID/招待コード用） */
 export function randomId(len = 20): string {
   const chars = 'abcdefghijkmnpqrstuvwxyz23456789'

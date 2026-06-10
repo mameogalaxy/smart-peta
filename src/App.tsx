@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Route, Routes } from 'react-router-dom'
 import { useStore } from './lib/store'
-import { decodeInvite } from './lib/firebase'
+import { decodeInvite, decodeSetup } from './lib/firebase'
 import { Layout } from './components/Layout'
 import { Home } from './pages/Home'
 import { Documents } from './pages/Documents'
@@ -22,7 +22,8 @@ function InviteHandler() {
     const sp = new URLSearchParams(window.location.search)
     const join = sp.get('join')
     const inv = sp.get('invite')
-    if (!join && !inv) return
+    const setup = sp.get('setup')
+    if (!join && !inv && !setup) return
     void (async () => {
       try {
         if (join) {
@@ -30,6 +31,19 @@ function InviteHandler() {
         } else if (inv) {
           const dec = decodeInvite(inv)
           if (dec) await store.joinHousehold(dec.h, dec.c)
+        }
+        if (setup) {
+          const d = decodeSetup(setup)
+          if (d) {
+            const patch: Record<string, string> = {}
+            if (d.k) patch.geminiApiKey = d.k
+            if (d.k2) patch.geminiApiKey2 = d.k2
+            if (d.m) patch.geminiModel = d.m
+            if (d.ml) patch.geminiModelLight = d.ml
+            if (Object.keys(patch).length && window.confirm('共有された設定（APIキーなど）をこの端末に取り込みますか？')) {
+              store.updateSettings(patch)
+            }
+          }
         }
       } catch (e) {
         console.error(e)

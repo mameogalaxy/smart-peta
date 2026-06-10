@@ -18,20 +18,23 @@ export function Home() {
   const [editProfile, setEditProfile] = useState(false)
   const [editEvent, setEditEvent] = useState<CalendarEvent | null>(null)
   const today = todayISO()
+  const memberId = state.settings.memberId
+  // 既定は「自分の予定」だけを表示（自分の登録が無ければ家族全員）
+  const [scope, setScope] = useState<'self' | 'all'>('self')
   const me = {
     name: state.settings.memberName || 'ゲスト',
     color: state.settings.memberColor || '#3b82f6',
     photo: state.settings.memberPhoto,
   }
 
-  const upcoming = useMemo(
-    () =>
-      [...state.events]
-        .filter((e) => !e.done && e.date >= today)
-        .sort((a, b) => (a.date + (a.time ?? '')).localeCompare(b.date + (b.time ?? '')))
-        .slice(0, 4),
-    [state.events, today],
-  )
+  const upcoming = useMemo(() => {
+    const selfOnly = scope === 'self' && !!memberId
+    return [...state.events]
+      .filter((e) => !e.done && e.date >= today)
+      .filter((e) => !selfOnly || e.assignee === memberId)
+      .sort((a, b) => (a.date + (a.time ?? '')).localeCompare(b.date + (b.time ?? '')))
+      .slice(0, 8)
+  }, [state.events, today, scope, memberId])
   const todayMeal = state.meals.find((m) => m.date === today)
   const remaining = state.shopping.filter((i) => !i.checked).length
   const hour = new Date().getHours()
@@ -70,14 +73,40 @@ export function Home() {
 
       {/* 直近の予定 */}
       <section>
-        <SectionTitle action={<Link to="/calendar" className="text-xs font-semibold text-brand-600">すべて見る</Link>}>
+        <SectionTitle
+          action={
+            <div className="flex items-center gap-2">
+              {memberId && (
+                <div className="flex rounded-full bg-slate-100 p-0.5 text-[11px] font-semibold">
+                  <button
+                    onClick={() => setScope('self')}
+                    className={`rounded-full px-2.5 py-0.5 transition ${scope === 'self' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400'}`}
+                  >
+                    自分
+                  </button>
+                  <button
+                    onClick={() => setScope('all')}
+                    className={`rounded-full px-2.5 py-0.5 transition ${scope === 'all' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400'}`}
+                  >
+                    家族
+                  </button>
+                </div>
+              )}
+              <Link to="/calendar" className="text-xs font-semibold text-brand-600">すべて見る</Link>
+            </div>
+          }
+        >
           直近の予定・締め切り
         </SectionTitle>
         {upcoming.length === 0 ? (
           <EmptyState
             icon={<CalendarIcon width={36} height={36} />}
-            title="予定はありません"
-            desc="プリントをスキャンすると、提出期限や行事が自動でここに並びます。"
+            title={scope === 'self' && memberId ? 'あなたの予定はありません' : '予定はありません'}
+            desc={
+              scope === 'self' && memberId
+                ? '「家族」に切り替えると家族全員の予定を表示します。'
+                : 'プリントをスキャンすると、提出期限や行事が自動でここに並びます。'
+            }
           />
         ) : (
           <div className="space-y-2">

@@ -4,13 +4,14 @@ import { Card, Button, Field, inputClass, Spinner, EmptyState, Badge, Modal } fr
 import { MealIcon, SparkleIcon, CartIcon, TrashIcon, CameraIcon, PlusIcon, CloseIcon } from '../components/icons'
 import { suggestDinner, scanLunchMenu, scanFridge, GeminiError, type MealSuggestion } from '../lib/gemini'
 import { demoDinner, demoLunchMenu, demoFridge } from '../lib/demo'
-import { addDaysISO, downscaleImage, fileToDataUrl, formatJpDate, todayISO, uid } from '../lib/util'
+import { addDaysISO, downscaleImage, fileToDataUrl, fileToScanData, formatJpDate, todayISO, uid } from '../lib/util'
 import type { Recipe } from '../types'
 import { useConfirm } from '../lib/confirm'
 
 export function Meals() {
   const store = useStore()
   const { state } = store
+  const aiSettings = store.aiSettings
   const confirm = useConfirm()
   const [date, setDate] = useState(todayISO())
   const [loading, setLoading] = useState(false)
@@ -58,11 +59,10 @@ export function Meals() {
     setLunchMsg('')
     setScanningLunch(true)
     try {
-      const raw = await fileToDataUrl(file)
-      const small = await downscaleImage(raw).catch(() => raw)
+      const small = await fileToScanData(file)
       let res
       try {
-        res = await scanLunchMenu(small, state.settings, todayISO())
+        res = await scanLunchMenu(small, aiSettings, todayISO())
       } catch (e) {
         if (e instanceof GeminiError && e.message === 'NO_KEY') res = demoLunchMenu()
         else throw e
@@ -87,7 +87,7 @@ export function Meals() {
       const small = await downscaleImage(raw).catch(() => raw)
       let res
       try {
-        res = await scanFridge(small, state.settings)
+        res = await scanFridge(small, aiSettings)
       } catch (e) {
         if (e instanceof GeminiError && e.message === 'NO_KEY') res = demoFridge()
         else throw e
@@ -126,7 +126,7 @@ export function Meals() {
     try {
       let res: MealSuggestion
       try {
-        res = await suggestDinner(ctx, state.settings)
+        res = await suggestDinner(ctx, aiSettings)
         setUsedDemo(false)
       } catch (e) {
         if (e instanceof GeminiError && e.message === 'NO_KEY') {
@@ -182,7 +182,7 @@ export function Meals() {
           <input
             ref={lunchRef}
             type="file"
-            accept="image/*"
+            accept="image/*,application/pdf"
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0]
@@ -207,7 +207,7 @@ export function Meals() {
           </div>
         ) : (
           <p className="text-xs text-slate-400">
-            献立表を撮影すると、日付ごとの給食を一括登録できます。今日の給食がすぐ分かり、夕食提案の被り回避にも使われます。
+            献立表を撮影、または<strong>PDF</strong>を選ぶと、日付ごとの給食を一括登録できます。今日の給食がすぐ分かり、夕食提案の被り回避にも使われます。
           </p>
         )}
 

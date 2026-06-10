@@ -147,6 +147,8 @@ interface StoreApi {
   // 設定
   updateSettings: (patch: Partial<Settings>) => void
   resetAll: () => void
+  /** 実際にAI呼び出しで使う設定（自分のキーが無ければ家族共有キーを補完） */
+  aiSettings: Settings
   // 家族クラウド共有
   cloud: { status: CloudStatus; error: string }
   createHousehold: (name: string) => Promise<string>
@@ -165,6 +167,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [cloud, setCloud] = useState<{ status: CloudStatus; error: string }>({ status: 'off', error: '' })
   /** 直近に同期した各コレクションの内容（エコー防止用） */
   const lastSync = useRef<Record<string, string>>({})
+  /** 家族から共有されたAI設定（APIキー・モデル）。自分のキーが無いときの補完に使う。 */
+  const [cloudAI, setCloudAI] = useState<Partial<Settings>>({})
 
   const applyRemote = useCallback((col: SyncedKey, items: unknown[]) => {
     lastSync.current[col] = JSON.stringify(items)
@@ -186,6 +190,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const cfg = resolveConfig(cfgStr)
     if (!cfg || !hid) {
       setCloud({ status: 'off', error: '' })
+      setCloudAI({})
       return
     }
     let cancelled = false
@@ -208,6 +213,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           )
           unsubs.push(unsub)
         }
+        // 家族から共有されたAI設定（APIキー・モデル）を購読
+        const cfgRef = fsDoc(getDb(), 'households', hid, 'data', 'config')
+        unsubs.push(
+          onSnapshot(
+            cfgRef,
+            (snap) => {
+              const d = (snap.exists() ? (snap.data() as Partial<Settings>) : {}) ?? {}
+              setCloudAI({
+                geminiApiKey: d.geminiApiKey || '',
+                geminiApiKey2: d.geminiApiKey2 || '',
+                geminiModel: d.geminiModel || '',
+                geminiModelLight: d.geminiModelLight || '',
+              })
+            },
+            () => {},
+          ),
+        )
         if (!cancelled) setCloud({ status: 'on', error: '' })
       } catch (e) {
         if (!cancelled) setCloud({ status: 'error', error: e instanceof Error ? e.message : 'クラウド接続に失敗しました。' })
@@ -217,8 +239,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       cancelled = true
       unsubs.forEach((u) => u())
       lastSync.current = {}
+      setCloudAI({})
     }
   }, [cfgStr, hid, applyRemote])
+
+  // 送信：APIキー・モデルを家族に共有（shareAiWithFamily が ON のときだけ書き込む）
+  useEffect(() => {
+    if (cloud.status !== 'on' || !hid) return
+    if (!state.settings.shareAiWithFamily) return
+    const cfg = {
+      geminiApiKey: state.settings.geminiApiKey || '',
+      geminiApiKey2: state.settings.geminiApiKey2 || '',
+      geminiModel: state.settings.geminiModel || '',
+      geminiModelLight: state.settings.geminiModelLight || '',
+    }
+    const ser = JSON.stringify(cfg)
+    if (ser !== lastSync.current['__config']) {
+      lastSync.current['__config'] = ser
+      setDoc(fsDoc(getDb(), 'households', hid, 'data', 'config'), cfg).catch(() => {})
+    }
+  }, [
+    cloud.status,
+    hid,
+    state.settings.shareAiWithFamily,
+    state.settings.geminiApiKey,
+    state.settings.geminiApiKey2,
+    state.settings.geminiModel,
+    state.settings.geminiModelLight,
+  ])
 
   // 送信：ローカルの変更を世帯データへ反映（エコー防止）
   useEffect(() => {
@@ -264,8 +312,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [state])
 
   const api = useMemo<StoreApi>(() => {
+    const aiSettings: Settings = {
+      ...state.settings,
+      geminiApiKey: state.settings.geminiApiKey || cloudAI.geminiApiKey || '',
+      geminiApiKey2: state.settings.geminiApiKey2 || cloudAI.geminiApiKey2 || '',
+      geminiModel: state.settings.geminiModel || cloudAI.geminiModel || DEFAULT_MODEL,
+      geminiModelLight: state.settings.geminiModelLight || cloudAI.geminiModelLight || '',
+    }
     return {
       state,
+      aiSettings,
       addDoc: (doc) => patch((s) => ({ ...s, docs: [doc, ...s.docs] })),
       updateDoc: (id, p) => patch((s) => ({ ...s, docs: s.docs.map((d) => (d.id === id ? { ...d, ...p } : d)) })),
       removeDoc: (id) =>
@@ -388,7 +444,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         patch((s) => ({ ...s, settings: { ...s.settings, householdId: undefined } }))
       },
     }
-  }, [state, cloud, patch])
+  }, [state, cloud, patch, cloudAI])
 
   return <StoreContext.Provider value={api}>{children}</StoreContext.Provider>
 }

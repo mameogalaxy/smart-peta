@@ -138,6 +138,8 @@ export interface Settings {
   memberPhoto?: string
   /** この利用者の安定ID（家族リスト上の自分の識別） */
   memberId?: string
+  /** APIキー・モデルを世帯（家族）に共有して、家族も使えるようにする */
+  shareAiWithFamily?: boolean
 }
 
 export interface AppState {

@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useStore } from '../lib/store'
 import { Card, Badge, Button, Modal, Field, inputClass, EmptyState, Spinner } from '../components/ui'
 import { DOC_CATEGORIES, type CalendarEvent, type DocCategory, type FamilyMember } from '../types'
-import { downscaleImage, fileToDataUrl, formatJpDate, parseISO, relativeDays, todayISO, uid } from '../lib/util'
+import { fileToScanData, isPdfDataUrl, formatJpDate, parseISO, relativeDays, todayISO, uid } from '../lib/util'
 import { CalendarIcon, CameraIcon, CheckIcon, PlusIcon, TrashIcon, ShareIcon } from '../components/icons'
 import { CategoryIcon } from '../components/CategoryIcon'
 import { Avatar } from '../components/Avatar'
@@ -15,7 +15,7 @@ import { EventEditModal } from '../components/EventEditModal'
 const WEEK = ['日', '月', '火', '水', '木', '金', '土']
 
 export function Calendar() {
-  const { state, addEvent, addEvents, updateEvent, removeEvent } = useStore()
+  const { state, aiSettings, addEvent, addEvents, updateEvent, removeEvent } = useStore()
   const today = todayISO()
   const photoRef = useRef<HTMLInputElement>(null)
   const [scanningPhoto, setScanningPhoto] = useState(false)
@@ -25,8 +25,7 @@ export function Calendar() {
 
   async function onPhotoEvents(file: File) {
     setPhotoMsg('')
-    const raw = await fileToDataUrl(file)
-    const small = await downscaleImage(raw).catch(() => raw)
+    const small = await fileToScanData(file)
     setPhotoInstruction('')
     setPendingImage(small)
   }
@@ -41,7 +40,7 @@ export function Calendar() {
     try {
       let res: { category: import('../types').DocCategory; events: { title: string; date: string; time?: string; note?: string }[] }
       try {
-        res = await extractEventsFromImage(img, state.settings, todayISO(), instruction)
+        res = await extractEventsFromImage(img, aiSettings, todayISO(), instruction)
       } catch (e) {
         if (e instanceof GeminiError && e.message === 'NO_KEY') {
           const d = demoScan()
@@ -82,6 +81,7 @@ export function Calendar() {
   const [calEvent, setCalEvent] = useState<CalendarEvent | null>(null)
   const [editEvent, setEditEvent] = useState<CalendarEvent | null>(null)
   const [filterMember, setFilterMember] = useState<string>('all')
+  const [view, setView] = useState<'day' | 'month'>('day')
   const [params, setParams] = useSearchParams()
 
   // 中央「＋」メニューからの「予定を追加」(?add=1) で追加モーダルを開く
@@ -108,6 +108,21 @@ export function Calendar() {
   const dayEvents = (eventsByDate.get(selected) ?? []).sort((a, b) =>
     (a.time ?? '99').localeCompare(b.time ?? '99'),
   )
+
+  // 月の一覧（タイムライン）：表示中の月の予定を日付ごとにまとめる
+  const monthGroups = useMemo(() => {
+    const ym = `${cursor.y}-${String(cursor.m + 1).padStart(2, '0')}`
+    const list = state.events
+      .filter((e) => e.date.startsWith(ym))
+      .filter((e) => filterMember === 'all' || e.assignee === filterMember)
+      .sort((a, b) => (a.date + (a.time ?? '99')).localeCompare(b.date + (b.time ?? '99')))
+    const map = new Map<string, CalendarEvent[]>()
+    for (const e of list) {
+      if (!map.has(e.date)) map.set(e.date, [])
+      map.get(e.date)!.push(e)
+    }
+    return [...map.entries()]
+  }, [state.events, cursor, filterMember])
 
   function shift(delta: number) {
     setCursor((c) => {
@@ -218,7 +233,7 @@ export function Calendar() {
       <input
         ref={photoRef}
         type="file"
-        accept="image/*"
+        accept="image/*,application/pdf"
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0]
@@ -226,8 +241,26 @@ export function Calendar() {
           e.target.value = ''
         }}
       />
+      {/* 表示切替：選択日 / 月の一覧（タイムライン） */}
+      <div className="flex w-fit rounded-full bg-slate-100 p-0.5 text-xs font-semibold">
+        <button
+          onClick={() => setView('day')}
+          className={`rounded-full px-3 py-1 transition ${view === 'day' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400'}`}
+        >
+          選択日
+        </button>
+        <button
+          onClick={() => setView('month')}
+          className={`rounded-full px-3 py-1 transition ${view === 'month' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400'}`}
+        >
+          月の一覧
+        </button>
+      </div>
+
       <div className="flex items-center justify-between gap-2">
-        <h2 className="shrink-0 font-bold text-slate-700">{formatJpDate(selected)}</h2>
+        <h2 className="shrink-0 font-bold text-slate-700">
+          {view === 'month' ? `${cursor.m + 1}月の予定` : formatJpDate(selected)}
+        </h2>
         <div className="flex flex-wrap justify-end gap-1.5">
           <Button variant="ghost" onClick={shareSchedule}>
             <ShareIcon width={16} height={16} /> 共有
@@ -242,7 +275,35 @@ export function Calendar() {
       </div>
       {photoMsg && <p className="rounded-lg bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700">{photoMsg}</p>}
 
-      {dayEvents.length === 0 ? (
+      {view === 'month' ? (
+        monthGroups.length === 0 ? (
+          <EmptyState icon={<CalendarIcon width={36} height={36} />} title="この月の予定はありません" />
+        ) : (
+          <div className="space-y-4">
+            {monthGroups.map(([date, evs]) => (
+              <div key={date}>
+                <p className="mb-1.5 flex items-center gap-2 text-xs font-bold text-slate-500">
+                  {formatJpDate(date)}
+                  <span className="font-semibold text-slate-300">{relativeDays(date)}</span>
+                </p>
+                <div className="space-y-2">
+                  {evs.map((e) => (
+                    <EventRow
+                      key={e.id}
+                      e={e}
+                      member={state.family.find((f) => f.id === e.assignee)}
+                      onToggleDone={() => updateEvent(e.id, { done: !e.done })}
+                      onEdit={() => setEditEvent(e)}
+                      onAddCalendar={() => setCalEvent(e)}
+                      onDelete={() => removeEvent(e.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      ) : dayEvents.length === 0 ? (
         <EmptyState icon={<CalendarIcon width={36} height={36} />} title="この日の予定はありません" />
       ) : (
         <>
@@ -263,10 +324,17 @@ export function Calendar() {
         </>
       )}
 
-      <Modal open={!!pendingImage} onClose={() => setPendingImage(null)} title="写真から予定を読み取る">
+      <Modal open={!!pendingImage} onClose={() => setPendingImage(null)} title="写真・PDFから予定を読み取る">
         {pendingImage && (
           <div className="space-y-3">
-            <img src={pendingImage} alt="" className="mx-auto max-h-52 rounded-xl object-contain" />
+            {isPdfDataUrl(pendingImage) ? (
+              <div className="mx-auto flex h-28 w-full flex-col items-center justify-center gap-1 rounded-xl bg-slate-100 text-slate-500">
+                <CameraIcon width={26} height={26} />
+                <span className="text-xs font-bold">PDFを読み取ります</span>
+              </div>
+            ) : (
+              <img src={pendingImage} alt="" className="mx-auto max-h-52 rounded-xl object-contain" />
+            )}
             <Field label="AIへの指示（任意）" hint="例: 提出期限だけ / 来週分だけ / 時間も入れて。空欄でもOK。">
               <textarea
                 className={`${inputClass} min-h-20`}
@@ -283,7 +351,7 @@ export function Calendar() {
                 <CameraIcon width={18} height={18} /> 予定を読み取る
               </Button>
             </div>
-            {!state.settings.geminiApiKey && (
+            {!aiSettings.geminiApiKey && (
               <p className="text-center text-xs text-slate-400">※ APIキー未設定のためデモ解析になります（指示は反映されません）。</p>
             )}
           </div>
@@ -294,6 +362,7 @@ export function Calendar() {
         <AddEventModal
           date={selected}
           family={state.family}
+          defaultAssignee={filterMember === 'all' ? '' : filterMember}
           onClose={() => setAdding(false)}
           onSave={(e) => {
             addEvent(e)
@@ -468,11 +537,13 @@ function EventRow({
 function AddEventModal({
   date,
   family,
+  defaultAssignee = '',
   onClose,
   onSave,
 }: {
   date: string
   family: FamilyMember[]
+  defaultAssignee?: string
   onClose: () => void
   onSave: (e: CalendarEvent) => void
 }) {
@@ -480,7 +551,7 @@ function AddEventModal({
   const [d, setD] = useState(date)
   const [time, setTime] = useState('')
   const [category, setCategory] = useState<DocCategory>('other')
-  const [assignee, setAssignee] = useState<string>('')
+  const [assignee, setAssignee] = useState<string>(defaultAssignee)
   const [remind, setRemind] = useState(true)
 
   return (

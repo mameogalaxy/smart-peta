@@ -5,15 +5,16 @@ import { useStore } from '../lib/store'
 import { scanDocument, analyzeDocumentText, GeminiError, type ScanResult } from '../lib/gemini'
 import { demoScan } from '../lib/demo'
 import { classifyByKeywords, extractDates } from '../lib/classify'
-import { downscaleImage, fileToDataUrl, todayISO, uid, formatJpDate } from '../lib/util'
+import { fileToScanData, isPdfDataUrl, todayISO, uid, formatJpDate } from '../lib/util'
 import { DOC_CATEGORIES, type DocCategory } from '../types'
 import { CategoryIcon } from './CategoryIcon'
+import { DocIcon } from './icons'
 
 type Phase = 'pick' | 'confirm' | 'analyzing' | 'review'
 
 export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const store = useStore()
-  const { settings } = store.state
+  const aiSettings = store.aiSettings
   const fileRef = useRef<HTMLInputElement>(null)
 
   const [phase, setPhase] = useState<Phase>('pick')
@@ -57,8 +58,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
     setError('')
     const smalls: string[] = []
     for (const f of Array.from(files)) {
-      const raw = await fileToDataUrl(f)
-      smalls.push(await downscaleImage(raw).catch(() => raw))
+      smalls.push(await fileToScanData(f))
     }
     setImages((prev) => [...prev, ...smalls])
     setPhase('confirm')
@@ -82,7 +82,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
       let res: ScanResult
       let demo = false
       try {
-        res = await scanDocument(images, settings, todayISO(), instruction.trim() || undefined)
+        res = await scanDocument(images, aiSettings, todayISO(), instruction.trim() || undefined)
       } catch (e) {
         if (e instanceof GeminiError && e.message === 'NO_KEY') {
           res = demoScan()
@@ -120,7 +120,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
     setRefining(true)
     setError('')
     try {
-      const res = await analyzeDocumentText(result.text, settings, todayISO())
+      const res = await analyzeDocumentText(result.text, aiSettings, todayISO())
       toReview(res, { manual: false })
     } catch (e) {
       setError(
@@ -139,7 +139,8 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
     if (!result) return
     const now = Date.now()
     const docId = uid()
-    const image = images[0] ?? ''
+    // 書類のサムネには最初の「画像」を使う（PDFは画像表示できないため除外）
+    const image = images.find((x) => !isPdfDataUrl(x)) ?? ''
     store.addDoc({
       id: docId,
       title: title || result.title,
@@ -198,12 +199,12 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
       {phase === 'pick' && (
         <div>
           <p className="mb-4 text-sm text-slate-500">
-            プリントを撮影/選択すると、AIが文字を読み取って自動で分類・整理します。<strong>複数枚</strong>まとめてもOK。
+            プリントを撮影/選択すると、AIが文字を読み取って自動で分類・整理します。<strong>複数枚</strong>や<strong>PDF</strong>もOK。
           </p>
           <input
             ref={fileRef}
             type="file"
-            accept="image/*"
+            accept="image/*,application/pdf"
             multiple
             className="hidden"
             onChange={(e) => {
@@ -216,11 +217,11 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
             className="flex w-full flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-brand-300 bg-brand-50 py-10 text-brand-600 active:bg-brand-100"
           >
             <CameraIcon width={40} height={40} />
-            <span className="font-bold">写真を撮る / 選ぶ（複数可）</span>
-            <span className="text-xs text-brand-500">学校のプリント・ゴミの日・レシピなど</span>
+            <span className="font-bold">写真・PDFを選ぶ（複数可）</span>
+            <span className="text-xs text-brand-500">学校のプリント・ゴミの日・レシピ・PDF配布物など</span>
           </button>
           {error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
-          {!settings.geminiApiKey && (
+          {!aiSettings.geminiApiKey && (
             <p className="mt-3 text-center text-xs text-slate-400">
               ※ Gemini APIキー未設定のため<strong>デモ解析</strong>で動作します（設定から登録可）。
             </p>
@@ -250,7 +251,14 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
           <div className="flex flex-wrap gap-2">
             {images.map((src, i) => (
               <div key={i} className="relative">
-                <img src={src} alt="" className="h-20 w-16 rounded-lg object-cover ring-1 ring-slate-200" />
+                {isPdfDataUrl(src) ? (
+                  <div className="flex h-20 w-16 flex-col items-center justify-center gap-1 rounded-lg bg-slate-100 text-slate-500 ring-1 ring-slate-200">
+                    <DocIcon width={22} height={22} />
+                    <span className="text-[10px] font-bold">PDF</span>
+                  </div>
+                ) : (
+                  <img src={src} alt="" className="h-20 w-16 rounded-lg object-cover ring-1 ring-slate-200" />
+                )}
                 <button
                   onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
                   className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-slate-700 text-white"
@@ -268,7 +276,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
               <span className="text-[10px] font-bold">追加</span>
             </button>
           </div>
-          <p className="text-xs text-slate-400">{images.length}枚を1つの書類としてまとめて読み取ります。</p>
+          <p className="text-xs text-slate-400">{images.length}件を1つの書類としてまとめて読み取ります（PDFはページごと自動で読み取り）。</p>
           <Field label="AIへの指示（任意）" hint="例: 提出期限だけ拾って / 材料を英語で / ゴミの分別を箇条書きで。空欄でもOK。">
             <textarea
               className={`${inputClass} min-h-20`}
@@ -286,7 +294,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
               <SparkleIcon width={18} height={18} /> AIで解析
             </Button>
           </div>
-          {!settings.geminiApiKey && (
+          {!aiSettings.geminiApiKey && (
             <p className="text-center text-xs text-slate-400">※ APIキー未設定のためデモ解析になります（指示は反映されません）。</p>
           )}
         </div>
@@ -294,7 +302,9 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
 
       {phase === 'analyzing' && (
         <div className="flex flex-col items-center py-10">
-          {images[0] && <img src={images[0]} alt="" className="mb-4 max-h-48 rounded-xl object-contain" />}
+          {images.find((x) => !isPdfDataUrl(x)) && (
+            <img src={images.find((x) => !isPdfDataUrl(x))} alt="" className="mb-4 max-h-48 rounded-xl object-contain" />
+          )}
           <div className="flex items-center gap-2 font-semibold text-brand-600">
             <Spinner /> AIが解析中…
           </div>
@@ -312,7 +322,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
           {isManual && (
             <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
               貼り付けたテキストから自動でカテゴリ・日付を判定しました。
-              {settings.geminiApiKey && (
+              {aiSettings.geminiApiKey && (
                 <button onClick={refineWithAI} disabled={refining} className="ml-1 font-bold text-brand-600">
                   {refining ? '整理中…' : 'AIでさらに整理する'}
                 </button>
@@ -321,7 +331,9 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
           )}
           {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
           <div className="flex gap-3">
-            {images[0] && <img src={images[0]} alt="" className="h-24 w-20 rounded-lg object-cover ring-1 ring-slate-200" />}
+            {images.find((x) => !isPdfDataUrl(x)) && (
+              <img src={images.find((x) => !isPdfDataUrl(x))} alt="" className="h-24 w-20 rounded-lg object-cover ring-1 ring-slate-200" />
+            )}
             <div className="flex-1">
               <Field label="タイトル">
                 <input className={inputClass} value={title} onChange={(e) => setTitle(e.target.value)} />

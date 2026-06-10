@@ -9,7 +9,7 @@ import { Avatar } from '../components/Avatar'
 import { QrModal } from '../components/QrModal'
 import { MEMBER_COLORS } from '../types'
 import { useConfirm } from '../lib/confirm'
-import { encodeInvite } from '../lib/firebase'
+import { encodeInvite, encodeSetup } from '../lib/firebase'
 import { HAS_DEFAULT_FIREBASE } from '../firebaseConfig'
 import { uid } from '../lib/util'
 
@@ -34,6 +34,7 @@ export function Settings() {
   const [cloudBusy, setCloudBusy] = useState(false)
   const [cloudMsg, setCloudMsg] = useState('')
   const [inviteQr, setInviteQr] = useState<{ title: string; url: string; hint: string } | null>(null)
+  const [setupQr, setSetupQr] = useState<{ title: string; url: string; hint: string } | null>(null)
   const profileFileRef = useRef<HTMLInputElement>(null)
 
   async function onProfilePhoto(file: File) {
@@ -144,6 +145,52 @@ export function Settings() {
             <span className={`h-2 w-2 shrink-0 rounded-full ${s.geminiApiKey ? 'bg-emerald-500' : 'bg-amber-500'}`} />
             {s.geminiApiKey ? 'キー設定済み。実際の写真をAIが解析します。' : '未設定。デモ解析で動作します（サンプル結果）。'}
           </div>
+
+          {/* 家族にAPIキーを反映 / 設定QR */}
+          {s.geminiApiKey && (
+            <div className="space-y-2 rounded-xl border border-slate-200 p-3">
+              <p className="text-xs font-bold text-slate-500">家族にAPIキーを反映</p>
+              {s.householdId ? (
+                <label className="flex items-start gap-2 text-sm text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={!!s.shareAiWithFamily}
+                    onChange={(e) => updateSettings({ shareAiWithFamily: e.target.checked })}
+                    className="mt-0.5 h-5 w-5 accent-brand-500"
+                  />
+                  <span>
+                    このAPIキーを家族（同じ世帯）と共有して使えるようにする
+                    <span className="mt-0.5 block text-[11px] text-slate-400">
+                      ONにすると、自分のキーを持たない家族はこのキーで解析できます（クラウド同期が必要）。
+                    </span>
+                  </span>
+                </label>
+              ) : (
+                <p className="text-[11px] text-slate-400">「家族でクラウド共有」で世帯に参加すると、家族とキーを共有できます。</p>
+              )}
+              <Button
+                variant="soft"
+                className="w-full"
+                onClick={() =>
+                  setSetupQr({
+                    title: 'AI設定を渡すQR',
+                    url: `${appUrl}?setup=${encodeSetup({
+                      k: s.geminiApiKey,
+                      k2: s.geminiApiKey2 || undefined,
+                      m: s.geminiModel || undefined,
+                      ml: s.geminiModelLight || undefined,
+                    })}`,
+                    hint: '別の端末・家族のスマホで読み取るとAPIキーが取り込まれます',
+                  })
+                }
+              >
+                <QrIcon width={18} height={18} /> 設定QRコードを表示（キーを渡す）
+              </Button>
+              <p className="text-[11px] text-slate-400">
+                ※ このQRには<strong>APIキーが含まれます</strong>。他人に見せないでください。
+              </p>
+            </div>
+          )}
 
           {/* AI利用状況 */}
           <div className="rounded-xl border border-slate-200 p-3">
@@ -355,6 +402,7 @@ export function Settings() {
       </section>
 
       <QrModal custom={inviteQr} onClose={() => setInviteQr(null)} />
+      <QrModal custom={setupQr} onClose={() => setSetupQr(null)} />
 
       {/* 共有 */}
       <section>

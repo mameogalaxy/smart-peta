@@ -15,6 +15,21 @@ export function fileToDataUrl(file: File): Promise<string> {
   })
 }
 
+/** dataURL が PDF かどうか */
+export function isPdfDataUrl(s: string): boolean {
+  return s.startsWith('data:application/pdf')
+}
+
+/**
+ * スキャン用にファイルを dataURL 化する。
+ * 画像は縮小（コスト/保存量の削減）、PDF等はそのまま渡す（Geminiが直接読める）。
+ */
+export async function fileToScanData(file: File): Promise<string> {
+  const raw = await fileToDataUrl(file)
+  if (file.type === 'application/pdf' || raw.startsWith('data:application/pdf')) return raw
+  return downscaleImage(raw).catch(() => raw)
+}
+
 /** dataURL から base64 部分と mime を取り出す */
 export function splitDataUrl(dataUrl: string): { mime: string; base64: string } {
   const match = /^data:([^;]+);base64,(.*)$/.exec(dataUrl)

@@ -171,7 +171,7 @@ export async function scanDocument(
 ): Promise<ScanResult> {
   const list = Array.isArray(images) ? images : [images]
   const multi = list.length > 1
-  const prompt = `You are a household paper-organizing assistant. Analyze ${multi ? `${list.length} photos that are pages of ONE document (or related printouts). Combine them` : 'a photo of a paper'} often stuck on a fridge (school handout, garbage-collection calendar, recipe clipping, or other notice). Today is ${today}.
+  const prompt = `You are a household paper-organizing assistant. Analyze ${multi ? `${list.length} files (photos or PDF pages) that are pages of ONE document (or related printouts). Combine them` : 'a file (photo or PDF) of a document'} often stuck on a fridge (school handout, garbage-collection calendar, recipe clipping, or other notice). Today is ${today}.
 Respond with JSON only. ALL text values must be in Japanese.
 1. OCR all text${multi ? ' from every page, in order,' : ''} into "text" (Japanese).
 2. "category": one of school / garbage / recipe / utility(電気・ガス・水道・光熱費の請求や検針) / manual(取扱説明書・保証書) / work(仕事・業務関連) / other.
@@ -336,7 +336,7 @@ export async function scanLunchMenu(imageDataUrl: string, settings: Settings, to
   return parseJson<LunchMenuResult>(raw)
 }
 
-// ---- 画像から予定だけ抽出（トークン節約：全文OCR/要約/レシピをしない・軽量モデル） ----
+// ---- 画像から予定だけ抽出（全文OCR/要約/レシピはしないが、読み取り精度重視でメインモデルを使用） ----
 export interface EventsResult {
   category: DocCategory
   events: { title: string; date: string; time?: string; note?: string }[]
@@ -363,7 +363,7 @@ const EVENTS_SCHEMA = {
   required: ['events'],
 }
 
-/** 画像から「予定（日付付き）」だけを軽量・低トークンで抽出する。 */
+/** 画像/PDFから「予定（日付付き）」だけを抽出する（全文OCR/要約はしないが読み取りはメインモデルで強めに）。 */
 export async function extractEventsFromImage(
   imageDataUrl: string,
   settings: Settings,
@@ -371,14 +371,14 @@ export async function extractEventsFromImage(
   instruction?: string,
 ): Promise<EventsResult> {
   const { mime, base64 } = splitDataUrl(imageDataUrl)
-  const prompt = `Today is ${today}. From this image (a schedule, notice, or screenshot), extract ONLY date-bearing events. Do NOT transcribe all text, no summary, no OCR dump.
+  const prompt = `Today is ${today}. From this file (a schedule, notice, screenshot, or PDF), carefully extract ALL date-bearing events. Do NOT transcribe all text, no summary, no OCR dump.
 Return JSON only. All text in Japanese.
 - "events": [{ title, date(YYYY-MM-DD; infer nearest upcoming year if missing), time?, note? }]
 - "category": school/garbage/recipe/utility/manual/work/other${instruction ? `\n- Follow this instruction: ${instruction}` : ''}`
   const raw = await generate(
     [{ text: prompt }, { inline_data: { mime_type: mime, data: base64 } }],
     settings,
-    { schema: EVENTS_SCHEMA, temperature: 0.1, light: true },
+    { schema: EVENTS_SCHEMA, temperature: 0.1 },
   )
   const r = parseJson<EventsResult>(raw)
   if (!r.category) r.category = 'other'
