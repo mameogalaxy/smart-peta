@@ -19,16 +19,28 @@ export function Calendar() {
   const photoRef = useRef<HTMLInputElement>(null)
   const [scanningPhoto, setScanningPhoto] = useState(false)
   const [photoMsg, setPhotoMsg] = useState('')
+  const [pendingImage, setPendingImage] = useState<string | null>(null)
+  const [photoInstruction, setPhotoInstruction] = useState('')
 
   async function onPhotoEvents(file: File) {
+    setPhotoMsg('')
+    const raw = await fileToDataUrl(file)
+    const small = await downscaleImage(raw).catch(() => raw)
+    setPhotoInstruction('')
+    setPendingImage(small)
+  }
+
+  async function runPhotoScan() {
+    if (!pendingImage) return
+    const img = pendingImage
+    const instruction = photoInstruction.trim() || undefined
+    setPendingImage(null)
     setScanningPhoto(true)
     setPhotoMsg('')
     try {
-      const raw = await fileToDataUrl(file)
-      const small = await downscaleImage(raw).catch(() => raw)
       let res
       try {
-        res = await scanDocument(small, state.settings, todayISO())
+        res = await scanDocument(img, state.settings, todayISO(), instruction)
       } catch (e) {
         if (e instanceof GeminiError && e.message === 'NO_KEY') res = demoScan()
         else throw e
@@ -218,6 +230,33 @@ export function Calendar() {
           </div>
         </>
       )}
+
+      <Modal open={!!pendingImage} onClose={() => setPendingImage(null)} title="写真から予定を読み取る">
+        {pendingImage && (
+          <div className="space-y-3">
+            <img src={pendingImage} alt="" className="mx-auto max-h-52 rounded-xl object-contain" />
+            <Field label="AIへの指示（任意）" hint="例: 提出期限だけ / 来週分だけ / 時間も入れて。空欄でもOK。">
+              <textarea
+                className={`${inputClass} min-h-20`}
+                value={photoInstruction}
+                onChange={(e) => setPhotoInstruction(e.target.value)}
+                placeholder="指示があれば入力（空欄でそのまま読み取り）"
+              />
+            </Field>
+            <div className="flex gap-2">
+              <Button variant="ghost" className="flex-1" onClick={() => setPendingImage(null)}>
+                キャンセル
+              </Button>
+              <Button className="flex-[2]" onClick={runPhotoScan}>
+                <CameraIcon width={18} height={18} /> 予定を読み取る
+              </Button>
+            </div>
+            {!state.settings.geminiApiKey && (
+              <p className="text-center text-xs text-slate-400">※ APIキー未設定のためデモ解析になります（指示は反映されません）。</p>
+            )}
+          </div>
+        )}
+      </Modal>
 
       {adding && (
         <AddEventModal

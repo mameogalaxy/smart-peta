@@ -9,12 +9,18 @@ import { QrModal } from '../components/QrModal'
 import { BellIcon, CalendarIcon, CartIcon, DocIcon, MealIcon, QrIcon, SchoolIcon } from '../components/icons'
 import { CategoryIcon } from '../components/CategoryIcon'
 import { Avatar } from '../components/Avatar'
+import { ProfileEditModal } from '../components/ProfileEditModal'
 
 export function Home() {
   const { state, cloud } = useStore()
   const [qrDoc, setQrDoc] = useState<DocItem | null>(null)
+  const [editProfile, setEditProfile] = useState(false)
   const today = todayISO()
-  const me = { name: state.settings.memberName || 'ゲスト', color: state.settings.memberColor || '#3b82f6' }
+  const me = {
+    name: state.settings.memberName || 'ゲスト',
+    color: state.settings.memberColor || '#3b82f6',
+    photo: state.settings.memberPhoto,
+  }
 
   const upcoming = useMemo(
     () =>
@@ -31,16 +37,20 @@ export function Home() {
 
   return (
     <div className="space-y-5">
-      {/* プロフィール（SNS風） */}
-      <Link to="/settings" className="flex items-center gap-3 active:opacity-80">
+      {/* プロフィール（SNS風・タップで編集） */}
+      <button onClick={() => setEditProfile(true)} className="flex w-full items-center gap-3 text-left active:opacity-80">
         <Avatar member={me} size={44} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-base font-extrabold text-slate-800">{me.name}<span className="text-sm font-semibold text-slate-400"> さん</span></p>
+          <p className="truncate text-base font-extrabold text-slate-800">
+            {me.name}
+            <span className="text-sm font-semibold text-slate-400"> さん</span>
+          </p>
           <p className="truncate text-[11px] text-slate-400">
-            {cloud.status === 'on' ? `${state.settings.householdName2 ?? '家族'} で共有中` : 'この端末で利用中'}
+            {cloud.status === 'on' ? `${state.settings.householdName2 ?? '家族'} で共有中` : 'タップで名前・写真を編集'}
           </p>
         </div>
-      </Link>
+      </button>
+      <ProfileEditModal open={editProfile} onClose={() => setEditProfile(false)} />
 
       <div className="animate-pop">
         <p className="text-sm text-slate-400">{greet}</p>
