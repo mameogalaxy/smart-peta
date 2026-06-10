@@ -161,7 +161,7 @@ export function Settings() {
               </div>
             </div>
             <p className="mt-2 text-[11px] text-slate-400">
-              ※「有料換算」の目安です。<strong>無料枠内なら実際の料金は¥0</strong>。正確な料金・上限はGoogle AI Studioの管理画面で確認できます。
+              ※ この端末の<strong>アプリ利用分のみ</strong>の推定です。AI Studioでのテストや他端末の利用は含まれないため、Googleの実請求とは差が出ます（正確な金額は<strong>Google AI Studioの管理画面</strong>で確認）。下の単価を実価格に合わせると精度が上がります。
             </p>
             <div className="mt-2 grid grid-cols-2 gap-2">
               <label className="text-[11px] text-slate-500">

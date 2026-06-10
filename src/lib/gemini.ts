@@ -336,6 +336,55 @@ export async function scanLunchMenu(imageDataUrl: string, settings: Settings, to
   return parseJson<LunchMenuResult>(raw)
 }
 
+// ---- 画像から予定だけ抽出（トークン節約：全文OCR/要約/レシピをしない・軽量モデル） ----
+export interface EventsResult {
+  category: DocCategory
+  events: { title: string; date: string; time?: string; note?: string }[]
+}
+
+const EVENTS_SCHEMA = {
+  type: 'object',
+  properties: {
+    category: { type: 'string', enum: ['school', 'garbage', 'recipe', 'utility', 'manual', 'work', 'other'] },
+    events: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          date: { type: 'string' },
+          time: { type: 'string' },
+          note: { type: 'string' },
+        },
+        required: ['title', 'date'],
+      },
+    },
+  },
+  required: ['events'],
+}
+
+/** 画像から「予定（日付付き）」だけを軽量・低トークンで抽出する。 */
+export async function extractEventsFromImage(
+  imageDataUrl: string,
+  settings: Settings,
+  today: string,
+  instruction?: string,
+): Promise<EventsResult> {
+  const { mime, base64 } = splitDataUrl(imageDataUrl)
+  const prompt = `Today is ${today}. From this image (a schedule, notice, or screenshot), extract ONLY date-bearing events. Do NOT transcribe all text, no summary, no OCR dump.
+Return JSON only. All text in Japanese.
+- "events": [{ title, date(YYYY-MM-DD; infer nearest upcoming year if missing), time?, note? }]
+- "category": school/garbage/recipe/utility/manual/work/other${instruction ? `\n- Follow this instruction: ${instruction}` : ''}`
+  const raw = await generate(
+    [{ text: prompt }, { inline_data: { mime_type: mime, data: base64 } }],
+    settings,
+    { schema: EVENTS_SCHEMA, temperature: 0.1, light: true },
+  )
+  const r = parseJson<EventsResult>(raw)
+  if (!r.category) r.category = 'other'
+  return r
+}
+
 export function hasApiKey(settings: Settings): boolean {
   return Boolean(settings.geminiApiKey)
 }

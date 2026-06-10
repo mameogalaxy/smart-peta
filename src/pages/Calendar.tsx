@@ -8,7 +8,7 @@ import { CalendarIcon, CameraIcon, CheckIcon, PlusIcon, TrashIcon, ShareIcon } f
 import { CategoryIcon } from '../components/CategoryIcon'
 import { Avatar } from '../components/Avatar'
 import { googleCalendarUrl, addToCalendarIcs } from '../lib/calendar'
-import { scanDocument, GeminiError } from '../lib/gemini'
+import { extractEventsFromImage, GeminiError } from '../lib/gemini'
 import { demoScan } from '../lib/demo'
 
 const WEEK = ['日', '月', '火', '水', '木', '金', '土']
@@ -38,12 +38,14 @@ export function Calendar() {
     setScanningPhoto(true)
     setPhotoMsg('')
     try {
-      let res
+      let res: { category: import('../types').DocCategory; events: { title: string; date: string; time?: string; note?: string }[] }
       try {
-        res = await scanDocument(img, state.settings, todayISO(), instruction)
+        res = await extractEventsFromImage(img, state.settings, todayISO(), instruction)
       } catch (e) {
-        if (e instanceof GeminiError && e.message === 'NO_KEY') res = demoScan()
-        else throw e
+        if (e instanceof GeminiError && e.message === 'NO_KEY') {
+          const d = demoScan()
+          res = { category: d.category, events: d.events }
+        } else throw e
       }
       const evs: CalendarEvent[] = res.events.map((ev) => ({
         id: uid(),
