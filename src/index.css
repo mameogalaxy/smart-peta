@@ -62,6 +62,15 @@ button {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+/* iOSホーム画面ではナビ下にセーフエリアが加わるため、FABも同じ分だけ持ち上げる */
+.safe-fab-bottom {
+  bottom: calc(5rem + env(safe-area-inset-bottom));
+}
+
+.safe-content-bottom {
+  padding-bottom: calc(7rem + env(safe-area-inset-bottom));
+}
+
 /* スクロールバーを控えめに */
 ::-webkit-scrollbar {
   width: 8px;

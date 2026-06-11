@@ -138,14 +138,14 @@ export function Layout() {
       )}
 
       {/* 本文 */}
-      <main className="flex-1 px-4 py-4 pb-28">
+      <main className="safe-content-bottom flex-1 px-4 py-4">
         <Outlet />
       </main>
 
       {/* 追加FAB（全画面共通の「＋」メニュー） */}
       <button
         onClick={() => setMenuOpen(true)}
-        className="fixed bottom-20 left-1/2 z-40 -translate-x-1/2 sm:left-auto sm:right-[calc(50%-14rem)] sm:translate-x-0"
+        className="safe-fab-bottom fixed left-1/2 z-40 -translate-x-1/2 sm:left-auto sm:right-[calc(50%-14rem)] sm:translate-x-0"
         aria-label="追加"
       >
         <span className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-500 text-white shadow-lg shadow-brand-500/40 ring-4 ring-white active:scale-95">
