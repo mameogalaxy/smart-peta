@@ -47,6 +47,8 @@ export interface CalendarEvent {
   remindMinutes?: number
   /** 担当の家族メンバーID */
   assignee?: string
+  /** くり返し登録した予定をまとめる識別子（一括削除に使用） */
+  seriesId?: string
   done: boolean
   createdAt: number
 }

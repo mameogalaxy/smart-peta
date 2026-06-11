@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useStore } from '../lib/store'
 import { Card, Badge, Button, Modal, Field, inputClass, EmptyState, Spinner } from '../components/ui'
 import { DOC_CATEGORIES, type CalendarEvent, type DocCategory, type FamilyMember } from '../types'
-import { fileToScanData, isPdfDataUrl, formatJpDate, parseISO, relativeDays, todayISO, uid } from '../lib/util'
+import { fileToScanData, isPdfDataUrl, addDaysISO, addMonthsISO, formatJpDate, parseISO, relativeDays, todayISO, uid } from '../lib/util'
 import { CalendarIcon, CameraIcon, CheckIcon, PlusIcon, TrashIcon, ShareIcon } from '../components/icons'
 import { CategoryIcon } from '../components/CategoryIcon'
 import { Avatar } from '../components/Avatar'
@@ -15,7 +15,7 @@ import { EventEditModal } from '../components/EventEditModal'
 const WEEK = ['日', '月', '火', '水', '木', '金', '土']
 
 export function Calendar() {
-  const { state, aiSettings, addEvent, addEvents, updateEvent, removeEvent } = useStore()
+  const { state, aiSettings, addEvents, updateEvent, removeEvent } = useStore()
   const today = todayISO()
   const photoRef = useRef<HTMLInputElement>(null)
   const [scanningPhoto, setScanningPhoto] = useState(false)
@@ -393,8 +393,8 @@ export function Calendar() {
           family={state.family}
           defaultAssignee={filterMember === 'all' ? '' : filterMember}
           onClose={() => setAdding(false)}
-          onSave={(e) => {
-            addEvent(e)
+          onSave={(events) => {
+            addEvents(events)
             setAdding(false)
           }}
         />
@@ -563,6 +563,28 @@ function EventRow({
   )
 }
 
+type Repeat = 'none' | 'daily' | 'weekly' | 'biweekly' | 'monthly'
+const REPEATS: { label: string; value: Repeat }[] = [
+  { label: '繰り返さない', value: 'none' },
+  { label: '毎日', value: 'daily' },
+  { label: '毎週', value: 'weekly' },
+  { label: '隔週', value: 'biweekly' },
+  { label: '毎月', value: 'monthly' },
+]
+
+/** 開始日と繰り返し設定から、日付の配列を生成 */
+function buildRepeatDates(start: string, repeat: Repeat, count: number): string[] {
+  if (repeat === 'none') return [start]
+  const dates: string[] = []
+  for (let i = 0; i < count; i++) {
+    if (repeat === 'daily') dates.push(addDaysISO(start, i))
+    else if (repeat === 'weekly') dates.push(addDaysISO(start, i * 7))
+    else if (repeat === 'biweekly') dates.push(addDaysISO(start, i * 14))
+    else if (repeat === 'monthly') dates.push(addMonthsISO(start, i))
+  }
+  return dates
+}
+
 function AddEventModal({
   date,
   family,
@@ -574,7 +596,7 @@ function AddEventModal({
   family: FamilyMember[]
   defaultAssignee?: string
   onClose: () => void
-  onSave: (e: CalendarEvent) => void
+  onSave: (events: CalendarEvent[]) => void
 }) {
   const [title, setTitle] = useState('')
   const [d, setD] = useState(date)
@@ -582,6 +604,10 @@ function AddEventModal({
   const [category, setCategory] = useState<DocCategory>('other')
   const [assignee, setAssignee] = useState<string>(defaultAssignee)
   const [remind, setRemind] = useState(true)
+  const [repeat, setRepeat] = useState<Repeat>('none')
+  const [count, setCount] = useState(8)
+
+  const repeatDates = buildRepeatDates(d, repeat, count)
 
   return (
     <Modal open onClose={onClose} title="予定を追加">
@@ -634,6 +660,38 @@ function AddEventModal({
             </div>
           </div>
         )}
+        {/* くり返し（毎週など一括登録） */}
+        <div>
+          <span className="mb-1 block text-sm font-semibold text-slate-600">くり返し</span>
+          <div className="flex flex-wrap gap-2">
+            {REPEATS.map((r) => (
+              <button
+                key={r.value}
+                onClick={() => setRepeat(r.value)}
+                className={`rounded-full px-3 py-1.5 text-sm font-semibold ${repeat === r.value ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-500'}`}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+          {repeat !== 'none' && (
+            <div className="mt-2 flex items-center gap-2">
+              <span className="text-sm text-slate-500">回数</span>
+              <input
+                type="number"
+                min={2}
+                max={52}
+                className={`${inputClass} w-24 py-1.5`}
+                value={count}
+                onChange={(e) => setCount(Math.min(52, Math.max(2, Number(e.target.value) || 2)))}
+              />
+              <span className="text-xs text-slate-400">
+                {formatJpDate(repeatDates[0])} 〜 {formatJpDate(repeatDates[repeatDates.length - 1])}（{repeatDates.length}件）
+              </span>
+            </div>
+          )}
+        </div>
+
         <label className="flex items-center gap-2 text-sm font-semibold text-slate-600">
           <input type="checkbox" checked={remind} onChange={(e) => setRemind(e.target.checked)} className="h-5 w-5 accent-brand-500" />
           家族にリマインダー通知する
@@ -641,21 +699,25 @@ function AddEventModal({
         <Button
           className="w-full"
           disabled={!title.trim()}
-          onClick={() =>
-            onSave({
+          onClick={() => {
+            const now = Date.now()
+            const seriesId = repeat === 'none' ? undefined : uid()
+            const events: CalendarEvent[] = repeatDates.map((date) => ({
               id: uid(),
               title: title.trim(),
-              date: d,
+              date,
               time: time || undefined,
               category,
               assignee: assignee || undefined,
+              seriesId,
               remind,
               done: false,
-              createdAt: Date.now(),
-            })
-          }
+              createdAt: now,
+            }))
+            onSave(events)
+          }}
         >
-          追加する
+          {repeat === 'none' ? '追加する' : `${repeatDates.length}件を一括追加`}
         </Button>
       </div>
     </Modal>

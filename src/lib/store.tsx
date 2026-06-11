@@ -124,6 +124,8 @@ interface StoreApi {
   addEvents: (es: CalendarEvent[]) => void
   updateEvent: (id: string, patch: Partial<CalendarEvent>) => void
   removeEvent: (id: string) => void
+  /** くり返しで登録した同一シリーズの予定をまとめて削除 */
+  removeEventSeries: (seriesId: string) => void
   // レシピ
   addRecipe: (r: Recipe) => void
   removeRecipe: (id: string) => void
@@ -361,6 +363,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           events: s.events.map((e) => (e.id === id ? { ...e, ...p } : e)),
         })),
       removeEvent: (id) => patch((s) => ({ ...s, events: s.events.filter((e) => e.id !== id) })),
+      removeEventSeries: (seriesId) =>
+        patch((s) => ({ ...s, events: s.events.filter((e) => e.seriesId !== seriesId) })),
       addRecipe: (r) => patch((s) => ({ ...s, recipes: [r, ...s.recipes] })),
       removeRecipe: (id) => patch((s) => ({ ...s, recipes: s.recipes.filter((r) => r.id !== id) })),
       addShopping: (items) => patch((s) => ({ ...s, shopping: [...items, ...s.shopping] })),

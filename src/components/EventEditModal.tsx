@@ -8,7 +8,7 @@ import { useConfirm } from '../lib/confirm'
 
 /** 既存の予定を編集・削除するシート（ホーム/カレンダーから共通利用） */
 export function EventEditModal({ event, onClose }: { event: CalendarEvent | null; onClose: () => void }) {
-  const { state, updateEvent, removeEvent } = useStore()
+  const { state, updateEvent, removeEvent, removeEventSeries } = useStore()
   const confirm = useConfirm()
   const [title, setTitle] = useState('')
   const [date, setDate] = useState('')
@@ -29,6 +29,8 @@ export function EventEditModal({ event, onClose }: { event: CalendarEvent | null
   }, [event])
 
   if (!event) return null
+
+  const seriesCount = event.seriesId ? state.events.filter((e) => e.seriesId === event.seriesId).length : 0
 
   function save() {
     if (!event || !title.trim()) return
@@ -118,6 +120,27 @@ export function EventEditModal({ event, onClose }: { event: CalendarEvent | null
             保存
           </Button>
         </div>
+
+        {event.seriesId && seriesCount > 1 && (
+          <button
+            onClick={async () => {
+              if (
+                await confirm({
+                  title: 'くり返し予定をすべて削除',
+                  message: `「${event.title}」のくり返し${seriesCount}件をすべて削除しますか？`,
+                  confirmLabel: 'すべて削除',
+                  danger: true,
+                })
+              ) {
+                removeEventSeries(event.seriesId!)
+                onClose()
+              }
+            }}
+            className="w-full text-center text-xs font-semibold text-red-500"
+          >
+            このくり返し（同じ予定）{seriesCount}件をまとめて削除
+          </button>
+        )}
       </div>
     </Modal>
   )

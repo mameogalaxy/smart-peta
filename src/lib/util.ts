@@ -149,3 +149,14 @@ export function addDaysISO(iso: string, days: number): string {
   d.setDate(d.getDate() + days)
   return todayISO(d)
 }
+
+export function addMonthsISO(iso: string, months: number): string {
+  const d = parseISO(iso) ?? new Date()
+  const day = d.getDate()
+  d.setDate(1)
+  d.setMonth(d.getMonth() + months)
+  // 月末調整（例: 1/31 + 1ヶ月 → 2/28）
+  const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
+  d.setDate(Math.min(day, lastDay))
+  return todayISO(d)
+}
