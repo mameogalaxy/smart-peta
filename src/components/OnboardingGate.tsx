@@ -8,11 +8,14 @@ import { downscaleImage, fileToDataUrl, uid } from '../lib/util'
 
 /** 初回起動時に「自分が家族の誰か（名前）」を必須登録させるゲート */
 export function OnboardingGate() {
-  const { state, updateSettings } = useStore()
+  const { state, cloud, updateSettings, joinHousehold } = useStore()
   const [name, setName] = useState('')
   const [color, setColor] = useState(MEMBER_COLORS[0])
   const [photo, setPhoto] = useState<string | undefined>(undefined)
   const fileRef = useRef<HTMLInputElement>(null)
+  const [joinCode, setJoinCode] = useState('')
+  const [joinBusy, setJoinBusy] = useState(false)
+  const [joinMsg, setJoinMsg] = useState('')
 
   if (state.settings.memberName) return null
 
@@ -20,6 +23,21 @@ export function OnboardingGate() {
     const raw = await fileToDataUrl(file)
     const small = await downscaleImage(raw, 256, 0.85).catch(() => raw)
     setPhoto(small)
+  }
+
+  async function doJoin() {
+    const code = joinCode.trim()
+    if (!code) return
+    setJoinBusy(true)
+    setJoinMsg('')
+    try {
+      await joinHousehold(code)
+      setJoinMsg('参加しました。データを同期しています…')
+    } catch (e) {
+      setJoinMsg(e instanceof Error ? e.message : '参加に失敗しました。コードをご確認ください。')
+    } finally {
+      setJoinBusy(false)
+    }
   }
 
   function start() {
@@ -44,6 +62,38 @@ export function OnboardingGate() {
   return (
     <Modal open onClose={() => {}} title="はじめまして">
       <div className="space-y-3">
+        {/* 既存ユーザーのデータ引き継ぎ（参加コードで世帯に入る） */}
+        {!state.settings.householdId ? (
+          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+            <p className="mb-1 text-sm font-bold text-slate-700">すでに使っている方（データを引き継ぐ）</p>
+            <p className="mb-2 text-[11px] text-slate-400">
+              いつもの端末の 設定 →「家族でクラウド共有」→「コードをコピー」の<strong>参加コード</strong>を入れると、予定・書類などのデータがこの画面でも使えます（招待QRの読み取りでもOK）。
+            </p>
+            <div className="flex gap-2">
+              <input
+                className={inputClass}
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && void doJoin()}
+                placeholder="参加コード"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+              <Button variant="soft" disabled={joinBusy || !joinCode.trim()} onClick={() => void doJoin()}>
+                {joinBusy ? '接続中…' : '引き継ぐ'}
+              </Button>
+            </div>
+            {joinMsg && <p className="mt-2 rounded-lg bg-white px-3 py-2 text-xs text-slate-600">{joinMsg}</p>}
+          </div>
+        ) : (
+          existingMembers.length === 0 && (
+            <p className="rounded-xl bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700">
+              {cloud.status === 'error' ? `同期エラー: ${cloud.error}` : '世帯に接続済み。データを同期しています…'}
+            </p>
+          )
+        )}
+
         {existingMembers.length > 0 && (
           <div className="rounded-xl border border-brand-200 bg-brand-50/60 p-3">
             <p className="mb-2 text-sm font-bold text-brand-700">あなたはどの人ですか？</p>
@@ -94,7 +144,6 @@ export function OnboardingGate() {
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && start()}
               placeholder="名前（例: ママ / たろう）"
-              autoFocus
             />
             <p className="mt-1 text-[11px] text-slate-400">アイコンをタップで写真を設定（任意）</p>
           </div>
