@@ -196,22 +196,23 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
 
   return (
     <Modal open={open} onClose={close} title="書類をスキャン">
+      {/* ファイル入力は常時マウント（confirm画面の「追加」からも使うため） */}
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*,application/pdf"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files && e.target.files.length) void onFiles(e.target.files)
+          e.target.value = ''
+        }}
+      />
       {phase === 'pick' && (
         <div>
           <p className="mb-4 text-sm text-slate-500">
             プリントを撮影/選択すると、AIが文字を読み取って自動で分類・整理します。<strong>複数枚</strong>や<strong>PDF</strong>もOK。
           </p>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*,application/pdf"
-            multiple
-            className="hidden"
-            onChange={(e) => {
-              if (e.target.files && e.target.files.length) void onFiles(e.target.files)
-              e.target.value = ''
-            }}
-          />
           <button
             onClick={() => fileRef.current?.click()}
             className="flex w-full flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-brand-300 bg-brand-50 py-10 text-brand-600 active:bg-brand-100"
