@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { CalendarIcon, CameraIcon, CartIcon, DocIcon, HomeIcon, MealIcon, PlusIcon, SettingsIcon } from './icons'
 import { useStore } from '../lib/store'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { ScanSheet } from './ScanSheet'
 import { Modal } from './ui'
 import { OnboardingGate } from './OnboardingGate'
@@ -14,6 +14,34 @@ const NAV = [
   { to: '/meals', label: '献立', Icon: MealIcon },
   { to: '/shopping', label: '買い物', Icon: CartIcon },
 ]
+
+/** 配信中の version.txt を見て、新しいビルドが出ていれば true を返す（ホーム画面アプリのキャッシュ対策） */
+function useUpdateAvailable(): boolean {
+  const [avail, setAvail] = useState(false)
+  useEffect(() => {
+    let stop = false
+    const check = async () => {
+      try {
+        const res = await fetch(`./version.txt?t=${Date.now()}`, { cache: 'no-store' })
+        if (!res.ok) return
+        const v = (await res.text()).trim()
+        if (!stop && v && typeof __BUILD_ID__ === 'string' && v !== __BUILD_ID__) setAvail(true)
+      } catch {
+        /* オフライン等は無視 */
+      }
+    }
+    void check()
+    const onVis = () => document.visibilityState === 'visible' && void check()
+    document.addEventListener('visibilitychange', onVis)
+    const id = window.setInterval(check, 30 * 60 * 1000)
+    return () => {
+      stop = true
+      document.removeEventListener('visibilitychange', onVis)
+      window.clearInterval(id)
+    }
+  }, [])
+  return avail
+}
 
 function NavItem({ to, label, Icon, end }: { to: string; label: string; Icon: typeof HomeIcon; end?: boolean }) {
   return (
@@ -48,6 +76,7 @@ export function Layout() {
   const navigate = useNavigate()
   const [scanOpen, setScanOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const updateAvailable = useUpdateAvailable()
 
   const addActions: { label: string; desc: string; Icon: typeof HomeIcon; run: () => void }[] = [
     { label: '書類をスキャン', desc: '写真/貼り付けで取り込み', Icon: CameraIcon, run: () => setScanOpen(true) },
@@ -94,6 +123,19 @@ export function Layout() {
           </NavLink>
         </div>
       </header>
+
+      {/* 新バージョン通知（ホーム画面アプリのキャッシュで更新が反映されない対策） */}
+      {updateAvailable && (
+        <div className="sticky top-[57px] z-20 flex items-center gap-2 border-b border-brand-200 bg-brand-50 px-4 py-2 text-sm text-brand-800">
+          <span className="flex-1 font-semibold">新しいバージョンがあります</span>
+          <button
+            onClick={() => location.replace(location.origin + location.pathname + '?v=' + Date.now())}
+            className="rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-bold text-white active:bg-brand-600"
+          >
+            更新する
+          </button>
+        </div>
+      )}
 
       {/* 本文 */}
       <main className="flex-1 px-4 py-4 pb-28">
