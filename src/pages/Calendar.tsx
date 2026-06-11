@@ -452,6 +452,11 @@ export function Calendar() {
           onClose={() => setAdding(false)}
           onSave={(events) => {
             addEvents(events)
+            if (events[0]) {
+              setSelected(events[0].date)
+              const firstDate = parseISO(events[0].date)
+              if (firstDate) setCursor({ y: firstDate.getFullYear(), m: firstDate.getMonth() })
+            }
             setAdding(false)
           }}
         />
@@ -660,8 +665,34 @@ function AddEventModal({
   const [remind, setRemind] = useState(true)
   const [repeat, setRepeat] = useState<Repeat>('none')
   const [count, setCount] = useState(8)
+  const [dateMode, setDateMode] = useState<'dates' | 'repeat'>('dates')
+  const [selectedDates, setSelectedDates] = useState<Set<string>>(() => new Set([date]))
+  const [dateCursor, setDateCursor] = useState(() => {
+    const initial = parseISO(date) ?? new Date()
+    return { y: initial.getFullYear(), m: initial.getMonth() }
+  })
 
   const repeatDates = buildRepeatDates(d, repeat, count)
+  const selectedDateList = [...selectedDates].sort()
+  const eventDates = dateMode === 'dates' ? selectedDateList : repeatDates
+  const dateCells = buildMonth(dateCursor.y, dateCursor.m)
+
+  function moveDateMonth(delta: number) {
+    const next = new Date(dateCursor.y, dateCursor.m + delta, 1)
+    setDateCursor({ y: next.getFullYear(), m: next.getMonth() })
+  }
+
+  function toggleDate(iso: string) {
+    setSelectedDates((current) => {
+      const next = new Set(current)
+      if (next.has(iso)) {
+        if (next.size > 1) next.delete(iso)
+      } else {
+        next.add(iso)
+      }
+      return next
+    })
+  }
 
   return (
     <Modal open onClose={onClose} title="予定を追加">
@@ -669,14 +700,137 @@ function AddEventModal({
         <Field label="予定名">
           <input className={inputClass} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="授業参観、ゴミ出し など" autoFocus />
         </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="日付">
-            <input type="date" className={inputClass} value={d} onChange={(e) => setD(e.target.value)} />
-          </Field>
-          <Field label="時刻（任意）">
-            <input type="time" className={inputClass} value={time} onChange={(e) => setTime(e.target.value)} />
-          </Field>
+        <div>
+          <span className="mb-1 block text-sm font-semibold text-slate-600">登録方法</span>
+          <div className="grid grid-cols-2 rounded-lg bg-slate-100 p-1">
+            <button
+              type="button"
+              onClick={() => setDateMode('dates')}
+              className={`rounded-md px-3 py-2 text-sm font-bold ${dateMode === 'dates' ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500'}`}
+            >
+              日付を選ぶ
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDateMode('repeat')
+                if (selectedDateList[0]) setD(selectedDateList[0])
+              }}
+              className={`rounded-md px-3 py-2 text-sm font-bold ${dateMode === 'repeat' ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500'}`}
+            >
+              くり返し
+            </button>
+          </div>
         </div>
+        {dateMode === 'dates' ? (
+          <div className="rounded-xl border border-slate-200 p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => moveDateMonth(-1)}
+                aria-label="前の月"
+                className="grid h-9 w-9 place-items-center rounded-full text-2xl leading-none text-slate-500 active:bg-slate-100"
+              >
+                ‹
+              </button>
+              <span className="text-sm font-bold text-slate-700">
+                {dateCursor.y}年{dateCursor.m + 1}月
+              </span>
+              <button
+                type="button"
+                onClick={() => moveDateMonth(1)}
+                aria-label="次の月"
+                className="grid h-9 w-9 place-items-center rounded-full text-2xl leading-none text-slate-500 active:bg-slate-100"
+              >
+                ›
+              </button>
+            </div>
+            <div className="grid grid-cols-7 gap-1 text-center">
+              {WEEK.map((day) => (
+                <span key={day} className="py-1 text-xs font-semibold text-slate-400">
+                  {day}
+                </span>
+              ))}
+              {dateCells.map((cell, index) =>
+                cell ? (
+                  <button
+                    key={cell.iso}
+                    type="button"
+                    onClick={() => toggleDate(cell.iso)}
+                    aria-pressed={selectedDates.has(cell.iso)}
+                    className={`aspect-square min-h-9 rounded-lg text-sm font-semibold ${
+                      selectedDates.has(cell.iso)
+                        ? 'bg-brand-500 text-white shadow-sm'
+                        : cell.iso === todayISO()
+                          ? 'bg-brand-50 text-brand-700'
+                          : 'text-slate-600 active:bg-slate-100'
+                    }`}
+                  >
+                    {cell.day}
+                  </button>
+                ) : (
+                  <span key={`empty-${index}`} aria-hidden="true" />
+                ),
+              )}
+            </div>
+            <div className="mt-3 border-t border-slate-100 pt-3">
+              <p className="mb-2 text-xs font-semibold text-slate-500">選択中: {selectedDateList.length}日</p>
+              <div className="flex max-h-20 flex-wrap gap-1.5 overflow-y-auto">
+                {selectedDateList.map((selectedDate) => (
+                  <button
+                    key={selectedDate}
+                    type="button"
+                    onClick={() => toggleDate(selectedDate)}
+                    className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700"
+                    aria-label={`${formatJpDate(selectedDate)}を選択解除`}
+                  >
+                    {formatJpDate(selectedDate)} ×
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <Field label="開始日">
+              <input type="date" className={inputClass} value={d} onChange={(e) => setD(e.target.value)} />
+            </Field>
+            <div>
+              <span className="mb-1 block text-sm font-semibold text-slate-600">くり返し</span>
+              <div className="flex flex-wrap gap-2">
+                {REPEATS.map((r) => (
+                  <button
+                    key={r.value}
+                    type="button"
+                    onClick={() => setRepeat(r.value)}
+                    className={`rounded-full px-3 py-1.5 text-sm font-semibold ${repeat === r.value ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-500'}`}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+              {repeat !== 'none' && (
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-sm text-slate-500">回数</span>
+                  <input
+                    type="number"
+                    min={2}
+                    max={52}
+                    className={`${inputClass} w-24 py-1.5`}
+                    value={count}
+                    onChange={(e) => setCount(Math.min(52, Math.max(2, Number(e.target.value) || 2)))}
+                  />
+                  <span className="text-xs text-slate-400">
+                    {formatJpDate(repeatDates[0])} 〜 {formatJpDate(repeatDates[repeatDates.length - 1])}（{repeatDates.length}件）
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        <Field label="時刻（任意）">
+          <input type="time" className={inputClass} value={time} onChange={(e) => setTime(e.target.value)} />
+        </Field>
         <div>
           <span className="mb-1 block text-sm font-semibold text-slate-600">分類</span>
           <div className="flex flex-wrap gap-2">
@@ -714,49 +868,17 @@ function AddEventModal({
             </div>
           </div>
         )}
-        {/* くり返し（毎週など一括登録） */}
-        <div>
-          <span className="mb-1 block text-sm font-semibold text-slate-600">くり返し</span>
-          <div className="flex flex-wrap gap-2">
-            {REPEATS.map((r) => (
-              <button
-                key={r.value}
-                onClick={() => setRepeat(r.value)}
-                className={`rounded-full px-3 py-1.5 text-sm font-semibold ${repeat === r.value ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-500'}`}
-              >
-                {r.label}
-              </button>
-            ))}
-          </div>
-          {repeat !== 'none' && (
-            <div className="mt-2 flex items-center gap-2">
-              <span className="text-sm text-slate-500">回数</span>
-              <input
-                type="number"
-                min={2}
-                max={52}
-                className={`${inputClass} w-24 py-1.5`}
-                value={count}
-                onChange={(e) => setCount(Math.min(52, Math.max(2, Number(e.target.value) || 2)))}
-              />
-              <span className="text-xs text-slate-400">
-                {formatJpDate(repeatDates[0])} 〜 {formatJpDate(repeatDates[repeatDates.length - 1])}（{repeatDates.length}件）
-              </span>
-            </div>
-          )}
-        </div>
-
         <label className="flex items-center gap-2 text-sm font-semibold text-slate-600">
           <input type="checkbox" checked={remind} onChange={(e) => setRemind(e.target.checked)} className="h-5 w-5 accent-brand-500" />
           家族にリマインダー通知する
         </label>
         <Button
           className="w-full"
-          disabled={!title.trim()}
+          disabled={!title.trim() || eventDates.length === 0}
           onClick={() => {
             const now = Date.now()
-            const seriesId = repeat === 'none' ? undefined : uid()
-            const events: CalendarEvent[] = repeatDates.map((date) => ({
+            const seriesId = eventDates.length > 1 ? uid() : undefined
+            const events: CalendarEvent[] = eventDates.map((date) => ({
               id: uid(),
               title: title.trim(),
               date,
@@ -771,7 +893,7 @@ function AddEventModal({
             onSave(events)
           }}
         >
-          {repeat === 'none' ? '追加する' : `${repeatDates.length}件を一括追加`}
+          {eventDates.length === 1 ? '追加する' : `${eventDates.length}件を一括追加`}
         </Button>
       </div>
     </Modal>
