@@ -12,10 +12,12 @@ permissions:
   pages: write
   id-token: write
 
-# 同時実行は最新のみ
+# デプロイは途中キャンセルしない（キャンセルするとPagesが未公開状態のまま残り、
+# サイト全体が「There isn't a GitHub Pages site here」404になることがあるため）。
+# 連続pushは順番に最後まで実行してから次を走らせる。
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
