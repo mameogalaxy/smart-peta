@@ -40,17 +40,25 @@ export function dataUrlToFile(dataUrl: string, name: string): File | null {
   return new File([arr], name, { type: m[1] })
 }
 
+/** dataURL の拡張子（png/jpg等）を返す */
+function extFromDataUrl(dataUrl: string): string {
+  const m = /^data:image\/([\w.+-]+)/.exec(dataUrl)
+  const t = (m?.[1] || 'jpeg').toLowerCase()
+  return t === 'jpeg' ? 'jpg' : t
+}
+
 /**
  * 画像を端末に保存する。
- * - 可能ならOSの共有シート（iOSの「画像を保存」でカメラロールへ）を使う。
+ * - 可能ならOSの共有シート（iOS/Androidの「画像を保存」でフォト/ギャラリーへ）を使う。
  * - 非対応ならファイルとしてダウンロード。
  * 返り値: 共有/保存を試みたら true。
  */
 export async function saveImagesToDevice(images: string[], prefix = 'smartpita'): Promise<boolean> {
+  const list = images.filter((s) => s && !s.startsWith('data:application/pdf'))
   const files: File[] = []
-  images.forEach((src, i) => {
-    if (src.startsWith('data:application/pdf')) return
-    const f = dataUrlToFile(src, `${prefix}-${i + 1}.jpg`)
+  list.forEach((src, i) => {
+    const name = list.length > 1 ? `${prefix}-${i + 1}.${extFromDataUrl(src)}` : `${prefix}.${extFromDataUrl(src)}`
+    const f = dataUrlToFile(src, name)
     if (f) files.push(f)
   })
   if (!files.length) return false

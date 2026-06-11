@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Modal, Button, Spinner } from './ui'
 import { makeBrandedQrDataUrl, makeQrDataUrl, docShareUrl } from '../lib/qr'
 import { useStore } from '../lib/store'
+import { saveImagesToDevice } from '../lib/util'
 import type { DocCategory, DocItem } from '../types'
 import { DOC_CATEGORIES } from '../types'
 import { PrinterIcon, CopyIcon, QrIcon } from './icons'
@@ -148,15 +149,9 @@ export function QrModal({
           <Button variant="soft" onClick={copyLink}>
             <CopyIcon width={18} height={18} /> {copied ? 'コピーしました' : 'リンクをコピー'}
           </Button>
-          <a
-            href={img || '#'}
-            download={`smartpita-qr-${target.dl}.png`}
-            className={`inline-flex items-center justify-center gap-2 rounded-xl bg-brand-50 px-4 py-2.5 text-sm font-semibold text-brand-700 active:bg-brand-100 ${
-              img ? '' : 'pointer-events-none opacity-50'
-            }`}
-          >
+          <Button variant="soft" disabled={!img} onClick={() => void saveImagesToDevice([img], `smartpita-qr-${target.dl}`)}>
             <QrIcon width={18} height={18} /> 画像を保存
-          </a>
+          </Button>
         </div>
         <p className="mt-3 text-center text-[11px] text-slate-400">
           ※ スマートピタのロゴと名前入りQRです。印刷して冷蔵庫に貼れます。
