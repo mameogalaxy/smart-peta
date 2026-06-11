@@ -4,9 +4,10 @@ import { useStore } from '../lib/store'
 import { Card, Badge, Button, Modal, Field, inputClass, EmptyState, Spinner } from '../components/ui'
 import { DOC_CATEGORIES, type CalendarEvent, type DocCategory, type FamilyMember } from '../types'
 import { fileToScanData, isPdfDataUrl, addDaysISO, addMonthsISO, formatJpDate, parseISO, relativeDays, todayISO, uid } from '../lib/util'
-import { CalendarIcon, CameraIcon, CheckIcon, PlusIcon, TrashIcon, ShareIcon } from '../components/icons'
+import { CalendarIcon, CameraIcon, CheckIcon, PlusIcon, TrashIcon, ShareIcon, QrIcon } from '../components/icons'
 import { CategoryIcon } from '../components/CategoryIcon'
 import { Avatar } from '../components/Avatar'
+import { QrModal } from '../components/QrModal'
 import { googleCalendarUrl, addToCalendarIcs } from '../lib/calendar'
 import { extractEventsFromImage, GeminiError } from '../lib/gemini'
 import { demoScan } from '../lib/demo'
@@ -86,7 +87,20 @@ export function Calendar() {
   const [editEvent, setEditEvent] = useState<CalendarEvent | null>(null)
   const [filterMember, setFilterMember] = useState<string>('all')
   const [view, setView] = useState<'day' | 'month'>('day')
+  const [scheduleQr, setScheduleQr] = useState(false)
   const [params, setParams] = useSearchParams()
+
+  // 担当メンバーの色（カレンダーの印・一覧の色分けに使用）
+  const memberColors = useMemo(() => new Map(state.family.map((f) => [f.id, f.color])), [state.family])
+  function eventColor(e: CalendarEvent): string {
+    return (
+      (e.assignee && memberColors.get(e.assignee)) ||
+      DOC_CATEGORIES.find((x) => x.id === e.category)?.color ||
+      '#3b82f6'
+    )
+  }
+
+  const appUrl = (state.settings.shareBaseUrl || window.location.origin + window.location.pathname).replace(/[?#].*$/, '')
 
   // 中央「＋」メニューからの「予定を追加」(?add=1) で追加モーダルを開く
   useEffect(() => {
@@ -191,16 +205,13 @@ export function Calendar() {
                 {cell.day}
                 {evs.length > 0 && (
                   <span className="absolute bottom-1 flex gap-0.5">
-                    {evs.slice(0, 3).map((e, i) => {
-                      const c = DOC_CATEGORIES.find((x) => x.id === e.category)
-                      return (
-                        <span
-                          key={i}
-                          className="h-1 w-1 rounded-full"
-                          style={{ backgroundColor: isSel ? '#fff' : c?.color }}
-                        />
-                      )
-                    })}
+                    {evs.slice(0, 3).map((e, i) => (
+                      <span
+                        key={i}
+                        className="h-1.5 w-1.5 rounded-full"
+                        style={{ backgroundColor: isSel ? '#fff' : eventColor(e) }}
+                      />
+                    ))}
                   </span>
                 )}
               </button>
@@ -268,6 +279,9 @@ export function Calendar() {
         <div className="flex flex-wrap justify-end gap-1.5">
           <Button variant="ghost" onClick={shareSchedule}>
             <ShareIcon width={16} height={16} /> 共有
+          </Button>
+          <Button variant="ghost" onClick={() => setScheduleQr(true)}>
+            <QrIcon width={16} height={16} /> QR
           </Button>
           <Button variant="soft" onClick={() => photoRef.current?.click()} disabled={scanningPhoto}>
             {scanningPhoto ? <Spinner /> : <CameraIcon width={16} height={16} />} 写真から
@@ -409,6 +423,19 @@ export function Calendar() {
       )}
 
       <EventEditModal event={editEvent} onClose={() => setEditEvent(null)} />
+
+      <QrModal
+        custom={
+          scheduleQr
+            ? {
+                title: `${state.settings.householdName}の予定`,
+                url: `${appUrl}#/calendar`,
+                hint: 'スマホで読み取ると予定（カレンダー）が開きます',
+              }
+            : null
+        }
+        onClose={() => setScheduleQr(false)}
+      />
     </div>
   )
 }
@@ -526,8 +553,10 @@ function EventRow({
   onDelete: () => void
 }) {
   const cat = DOC_CATEGORIES.find((c) => c.id === e.category)
+  const accent = member?.color ?? cat?.color ?? '#3b82f6'
   return (
     <Card className="flex items-center gap-2 p-3">
+      <span className="h-9 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: accent }} />
       <button
         onClick={onToggleDone}
         aria-label="完了"
