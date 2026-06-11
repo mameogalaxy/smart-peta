@@ -22,8 +22,10 @@ export interface DocItem {
   text: string
   /** AIの要約 */
   summary: string
-  /** 画像（dataURL）。デモのためローカル保存 */
+  /** 代表画像（=images[0]）。一覧のサムネ用。dataURLでローカル保存 */
   image?: string
+  /** 複数ページの画像（dataURL配列）。詳細でスライド表示。ローカル保存 */
+  images?: string[]
   createdAt: number
 }
 

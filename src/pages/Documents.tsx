@@ -1,12 +1,13 @@
 import { useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useStore } from '../lib/store'
-import { Card, Badge, EmptyState, Button, Modal } from '../components/ui'
+import { Card, Badge, EmptyState, Button, Modal, Spinner } from '../components/ui'
 import { QrModal } from '../components/QrModal'
 import { ImageLightbox } from '../components/ImageLightbox'
 import { DOC_CATEGORIES, type DocCategory, type DocItem } from '../types'
-import { formatJpDate, fileToDataUrl, downscaleImage, todayISO, uid } from '../lib/util'
-import { CameraIcon, CheckIcon, DocIcon, GridIcon, PlusIcon, PrinterIcon, QrIcon, TrashIcon } from '../components/icons'
+import { formatJpDate, fileToDataUrl, downscaleImage, isPdfDataUrl, todayISO, uid } from '../lib/util'
+import { scanDocument, GeminiError } from '../lib/gemini'
+import { CameraIcon, CheckIcon, DocIcon, GridIcon, PlusIcon, PrinterIcon, QrIcon, SparkleIcon, TrashIcon } from '../components/icons'
 import { CategoryIcon } from '../components/CategoryIcon'
 import { extractDates } from '../lib/classify'
 import { useConfirm } from '../lib/confirm'
@@ -16,7 +17,9 @@ import { ICON_SRC } from '../brand'
 import type { ReactNode } from 'react'
 
 export function Documents() {
-  const { state, removeDoc, updateDoc, addEvent } = useStore()
+  const store = useStore()
+  const { state, removeDoc, updateDoc, addEvent } = store
+  const aiSettings = store.aiSettings
   const confirm = useConfirm()
   const [params, setParams] = useSearchParams()
   const active = (params.get('cat') as DocCategory | null) ?? 'all'
@@ -24,14 +27,65 @@ export function Documents() {
   const [detail, setDetail] = useState<DocItem | null>(null)
   const [lightbox, setLightbox] = useState<string | null>(null)
   const [showOcr, setShowOcr] = useState(false)
+  const [reanalyzing, setReanalyzing] = useState(false)
+  const [reanalyzeMsg, setReanalyzeMsg] = useState('')
   const detailFileRef = useRef<HTMLInputElement>(null)
 
-  async function onDetailImage(file: File) {
+  /** 詳細の画像リスト（images優先・無ければimage1枚） */
+  function detailImages(d: DocItem): string[] {
+    if (d.images && d.images.length) return d.images
+    return d.image ? [d.image] : []
+  }
+
+  function setDetailImages(next: string[]) {
     if (!detail) return
-    const raw = await fileToDataUrl(file)
-    const small = await downscaleImage(raw).catch(() => raw)
-    updateDoc(detail.id, { image: small })
-    setDetail({ ...detail, image: small })
+    const patch = { image: next[0] ?? '', images: next.length > 1 ? next : undefined }
+    updateDoc(detail.id, patch)
+    setDetail({ ...detail, ...patch })
+  }
+
+  async function onDetailImages(files: FileList) {
+    if (!detail) return
+    const adds: string[] = []
+    for (const f of Array.from(files)) {
+      const raw = await fileToDataUrl(f)
+      adds.push(await downscaleImage(raw).catch(() => raw))
+    }
+    setDetailImages([...detailImages(detail), ...adds])
+  }
+
+  function removeDetailImage(i: number) {
+    if (!detail) return
+    setDetailImages(detailImages(detail).filter((_, j) => j !== i))
+  }
+
+  /** 詳細の画像をAIで再読み込み（要約・分類・OCRを更新。画像はそのまま） */
+  async function reanalyzeDetail() {
+    if (!detail || reanalyzing) return
+    const imgs = detailImages(detail).filter((x) => !isPdfDataUrl(x))
+    if (!imgs.length) {
+      setReanalyzeMsg('読み込める画像がありません。')
+      return
+    }
+    setReanalyzing(true)
+    setReanalyzeMsg('')
+    try {
+      const res = await scanDocument(imgs, aiSettings, todayISO())
+      const patch = { title: res.title || detail.title, category: res.category, summary: res.summary, text: res.text }
+      updateDoc(detail.id, patch)
+      setDetail({ ...detail, ...patch })
+      setReanalyzeMsg('AIで読み込み直しました。')
+    } catch (e) {
+      setReanalyzeMsg(
+        e instanceof GeminiError && e.message === 'NO_KEY'
+          ? 'APIキー未設定のため再読み込みできません（設定から登録）。'
+          : e instanceof Error
+            ? e.message
+            : '再読み込みに失敗しました。',
+      )
+    } finally {
+      setReanalyzing(false)
+    }
   }
 
   const detectedEvents = detail ? extractDates(detail.text, todayISO()) : []
@@ -197,41 +251,83 @@ export function Documents() {
 
       <QrModal doc={qrDoc} onClose={() => setQrDoc(null)} />
 
-      <Modal open={!!detail} onClose={() => setDetail(null)} title={detail?.title}>
+      <Modal open={!!detail} onClose={() => { setDetail(null); setReanalyzeMsg(''); setShowOcr(false) }} title={detail?.title}>
         {detail && (
           <div className="space-y-3">
             <input
               ref={detailFileRef}
               type="file"
               accept="image/*"
+              multiple
               className="hidden"
               onChange={(e) => {
-                const f = e.target.files?.[0]
-                if (f) void onDetailImage(f)
+                if (e.target.files && e.target.files.length) void onDetailImages(e.target.files)
                 e.target.value = ''
               }}
             />
-            {detail.image ? (
-              <div>
-                <button onClick={() => setLightbox(detail.image!)} className="block w-full">
-                  <img src={detail.image} alt="" className="max-h-80 w-full rounded-xl object-contain ring-1 ring-slate-200" />
-                </button>
-                <div className="mt-1 flex items-center justify-between">
-                  <span className="text-[11px] text-slate-400">タップで拡大</span>
-                  <button onClick={() => detailFileRef.current?.click()} className="text-xs font-semibold text-brand-600">
-                    画像を差し替え
+            {(() => {
+              const imgs = detailImages(detail)
+              if (imgs.length === 0) {
+                return (
+                  <button
+                    onClick={() => detailFileRef.current?.click()}
+                    className="flex w-full flex-col items-center gap-2 rounded-xl border-2 border-dashed border-slate-200 py-6 text-slate-400 active:bg-slate-50"
+                  >
+                    <CameraIcon width={28} height={28} />
+                    <span className="text-sm font-semibold">写真を追加</span>
                   </button>
+                )
+              }
+              return (
+                <div>
+                  <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto rounded-xl">
+                    {imgs.map((src, i) => (
+                      <div key={i} className="relative w-full shrink-0 snap-center">
+                        <button onClick={() => setLightbox(src)} className="block w-full">
+                          <img src={src} alt="" className="max-h-80 w-full rounded-xl object-contain ring-1 ring-slate-200" />
+                        </button>
+                        <span className="absolute left-2 top-2 rounded-full bg-slate-900/55 px-2 py-0.5 text-[11px] font-bold text-white">
+                          {i + 1}/{imgs.length}
+                        </span>
+                        <button
+                          onClick={() => removeDetailImage(i)}
+                          className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-slate-900/55 text-white active:bg-red-500"
+                          aria-label="この写真を削除"
+                        >
+                          <TrashIcon width={15} height={15} />
+                        </button>
+                      </div>
+                    ))}
+                    {/* タップで写真追加 */}
+                    <button
+                      onClick={() => detailFileRef.current?.click()}
+                      className="flex w-full shrink-0 snap-center flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-brand-300 bg-brand-50 text-brand-500"
+                    >
+                      <PlusIcon width={28} height={28} />
+                      <span className="text-sm font-semibold">写真を追加</span>
+                    </button>
+                  </div>
+                  <div className="mt-1 flex items-center justify-between">
+                    <span className="text-[11px] text-slate-400">
+                      {imgs.length > 1 ? 'スワイプで切替／タップで拡大' : 'タップで拡大'}
+                    </span>
+                    <button onClick={() => detailFileRef.current?.click()} className="text-xs font-semibold text-brand-600">
+                      ＋ 写真を追加
+                    </button>
+                  </div>
+                  <Button
+                    variant="soft"
+                    className="mt-2 w-full"
+                    disabled={reanalyzing}
+                    onClick={() => void reanalyzeDetail()}
+                  >
+                    {reanalyzing ? <Spinner /> : <SparkleIcon width={18} height={18} />}
+                    {reanalyzing ? 'AIで再読み込み中…' : 'この写真をAIで再読み込み'}
+                  </Button>
+                  {reanalyzeMsg && <p className="mt-1 text-center text-[11px] text-slate-400">{reanalyzeMsg}</p>}
                 </div>
-              </div>
-            ) : (
-              <button
-                onClick={() => detailFileRef.current?.click()}
-                className="flex w-full flex-col items-center gap-2 rounded-xl border-2 border-dashed border-slate-200 py-6 text-slate-400 active:bg-slate-50"
-              >
-                <CameraIcon width={28} height={28} />
-                <span className="text-sm font-semibold">写真を追加</span>
-              </button>
-            )}
+              )
+            })()}
 
             <div className="rounded-xl bg-slate-50 p-3">
               <p className="text-xs font-bold text-slate-400">要約</p>

@@ -48,7 +48,8 @@ export type CloudStatus = 'off' | 'connecting' | 'on' | 'error'
 
 function stripImages(col: SyncedKey, raw: unknown[]): unknown[] {
   if (col !== 'docs') return raw
-  return (raw as DocItem[]).map(({ image: _img, ...rest }) => rest)
+  // 画像（代表・複数ページとも）は各端末ローカルに保持し、クラウドへは送らない
+  return (raw as DocItem[]).map(({ image: _img, images: _imgs, ...rest }) => rest)
 }
 
 /** 2026年時点の最新無料Flashを常に指す推奨モデル */
@@ -181,7 +182,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setState((s) => {
       if (col === 'docs') {
         const localById = new Map(s.docs.map((d) => [d.id, d]))
-        const remote = (items as DocItem[]).map((d) => ({ ...d, image: d.image ?? localById.get(d.id)?.image }))
+        const remote = (items as DocItem[]).map((d) => {
+          const local = localById.get(d.id)
+          return { ...d, image: d.image ?? local?.image, images: d.images ?? local?.images }
+        })
         if (doMerge) {
           const byId = new Map<string, DocItem>(remote.map((d) => [d.id, d]))
           for (const d of s.docs) if (!byId.has(d.id)) byId.set(d.id, d)

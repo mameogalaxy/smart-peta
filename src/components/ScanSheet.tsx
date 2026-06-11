@@ -139,8 +139,9 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
     if (!result) return
     const now = Date.now()
     const docId = uid()
-    // 書類のサムネには最初の「画像」を使う（PDFは画像表示できないため除外）
-    const image = images.find((x) => !isPdfDataUrl(x)) ?? ''
+    // 画像（PDFは表示できないため除外）。複数枚は全部保存してスライド表示。代表＝先頭。
+    const imgs = images.filter((x) => !isPdfDataUrl(x))
+    const image = imgs[0] ?? ''
     store.addDoc({
       id: docId,
       title: title || result.title,
@@ -148,6 +149,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
       text: result.text,
       summary: result.summary,
       image,
+      images: imgs.length > 1 ? imgs : undefined,
       createdAt: now,
     })
 
