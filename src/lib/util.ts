@@ -98,6 +98,12 @@ export async function downscaleImage(dataUrl: string, maxSize = 1280, quality = 
   return canvas.toDataURL('image/jpeg', quality)
 }
 
+/** 家族共有用に強めに圧縮（Firestore 1MB制限内に収めるため）。PDFはそのまま。 */
+export async function compressForShare(dataUrl: string, maxSize = 1000, quality = 0.5): Promise<string> {
+  if (dataUrl.startsWith('data:application/pdf')) return dataUrl
+  return downscaleImage(dataUrl, maxSize, quality).catch(() => dataUrl)
+}
+
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image()

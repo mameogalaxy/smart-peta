@@ -396,7 +396,7 @@ export function Settings() {
 
           {cloudMsg && <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">{cloudMsg}</p>}
           <p className="text-[11px] text-slate-400">
-            文字データ（書類の文・予定・リスト等）のみ同期し、<strong>写真は各端末ローカル</strong>に保存（無料枠を維持）。データは参加中の世帯メンバーだけが見られます（他の人には不可視）。
+            文字データ（書類の文・予定・リスト等）に加え、<strong>書類の写真も家族に共有</strong>されます（無料枠維持のため自動で圧縮）。データは参加中の世帯メンバーだけが見られます（他の人には不可視）。
           </p>
         </Card>
       </section>

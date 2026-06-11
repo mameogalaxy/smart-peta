@@ -20,12 +20,14 @@ import type {
   ShoppingItem,
 } from '../types'
 import { seedFamily } from './demo'
-import { uid } from './util'
+import { uid, compressForShare } from './util'
 import {
   doc as fsDoc,
+  collection as fsCollection,
   setDoc,
   updateDoc,
   getDoc,
+  deleteDoc,
   onSnapshot,
 } from 'firebase/firestore'
 import { ensureAnonSignIn, getDb, initFirebase, parseFirebaseConfig, randomId } from './firebase'
@@ -48,8 +50,18 @@ export type CloudStatus = 'off' | 'connecting' | 'on' | 'error'
 
 function stripImages(col: SyncedKey, raw: unknown[]): unknown[] {
   if (col !== 'docs') return raw
-  // 画像（代表・複数ページとも）は各端末ローカルに保持し、クラウドへは送らない
+  // 画像は items とは別（households/{hid}/data/img_{docId}）に同期するため、本文からは外す
   return (raw as DocItem[]).map(({ image: _img, images: _imgs, ...rest }) => rest)
+}
+
+/** 書類の画像リスト（代表+複数ページ）を1つにまとめる */
+function docImageList(d: DocItem): string[] {
+  if (d.images && d.images.length) return d.images
+  return d.image ? [d.image] : []
+}
+/** 画像セットの簡易シグネチャ（変化検知用） */
+function imgSig(list: string[]): string {
+  return `${list.length}:${list.map((s) => s.length).join(',')}`
 }
 
 /** 2026年時点の最新無料Flashを常に指す推奨モデル */
@@ -172,6 +184,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const lastSync = useRef<Record<string, string>>({})
   /** 参加直後、最初の受信でローカルの内容を世帯にマージする対象コレクション（データ消失防止） */
   const mergeCols = useRef<Set<string>>(new Set())
+  /** クラウドから受信した書類画像（docId -> images）。ローカルに無い書類へ表示用に付与 */
+  const remoteDocImages = useRef<Map<string, string[]>>(new Map())
+  /** 各書類画像の最終同期シグネチャ（再送/エコー防止） */
+  const imgPushed = useRef<Record<string, string>>({})
   /** 家族から共有されたAI設定（APIキー・モデル）。自分のキーが無いときの補完に使う。 */
   const [cloudAI, setCloudAI] = useState<Partial<Settings>>({})
 
@@ -186,7 +202,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const localById = new Map(s.docs.map((d) => [d.id, d]))
         const remote = (items as DocItem[]).map((d) => {
           const local = localById.get(d.id)
-          return { ...d, image: d.image ?? local?.image, images: d.images ?? local?.images }
+          const ri = remoteDocImages.current.get(d.id)
+          const hasLocalImg = !!(local?.image || (local?.images && local.images.length))
+          if (ri && !hasLocalImg) imgPushed.current[d.id] = imgSig(ri)
+          return {
+            ...d,
+            image: local?.image ?? (hasLocalImg ? undefined : ri?.[0]),
+            images: local?.images ?? (hasLocalImg ? undefined : ri && ri.length > 1 ? ri : undefined),
+          }
         })
         if (doMerge) {
           const byId = new Map<string, DocItem>(remote.map((d) => [d.id, d]))
@@ -216,6 +239,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!cfg || !hid) {
       setCloud({ status: 'off', error: '' })
       setCloudAI({})
+      remoteDocImages.current = new Map()
+      imgPushed.current = {}
       return
     }
     let cancelled = false
@@ -238,6 +263,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           )
           unsubs.push(unsub)
         }
+        // 書類画像を購読（households/{hid}/data/img_{docId}）。ローカルに画像が無い書類へ付与
+        const dataCol = fsCollection(getDb(), 'households', hid, 'data')
+        unsubs.push(
+          onSnapshot(
+            dataCol,
+            (snap) => {
+              const imgs = new Map<string, string[]>()
+              snap.forEach((docu) => {
+                if (!docu.id.startsWith('img_')) return
+                const a = (docu.data() as { images?: string[] }).images
+                if (a && a.length) imgs.set(docu.id.slice(4), a)
+              })
+              remoteDocImages.current = imgs
+              setState((s) => {
+                let changed = false
+                const docs = s.docs.map((d) => {
+                  if (d.image || (d.images && d.images.length)) return d
+                  const r = imgs.get(d.id)
+                  if (!r || !r.length) return d
+                  imgPushed.current[d.id] = imgSig(r)
+                  changed = true
+                  return { ...d, image: r[0], images: r.length > 1 ? r : undefined }
+                })
+                return changed ? { ...s, docs } : s
+              })
+            },
+            () => {},
+          ),
+        )
         // 家族から共有されたAI設定（APIキー・モデル）を購読
         const cfgRef = fsDoc(getDb(), 'households', hid, 'data', 'config')
         unsubs.push(
@@ -264,9 +318,43 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       cancelled = true
       unsubs.forEach((u) => u())
       lastSync.current = {}
+      remoteDocImages.current = new Map()
+      imgPushed.current = {}
       setCloudAI({})
     }
   }, [cfgStr, hid, applyRemote])
+
+  // 送信：書類の画像を圧縮して世帯へ共有（data/img_{docId}）。本文(items)とは別管理
+  useEffect(() => {
+    if (cloud.status !== 'on' || !hid) return
+    let cancelled = false
+    ;(async () => {
+      for (const d of state.docs) {
+        const list = docImageList(d).filter((x) => !x.startsWith('data:application/pdf'))
+        if (!list.length) continue
+        const sig = imgSig(list)
+        if (imgPushed.current[d.id] === sig) continue
+        imgPushed.current[d.id] = sig
+        try {
+          const compressed = await Promise.all(list.map((x) => compressForShare(x)))
+          if (cancelled) return
+          await setDoc(fsDoc(getDb(), 'households', hid, 'data', `img_${d.id}`), { images: compressed })
+        } catch {
+          // 1MB超過/オフライン等は共有をスキップ（本文は同期済み）
+        }
+      }
+      // ローカルで削除された書類の画像はクラウドからも削除
+      for (const id of Object.keys(imgPushed.current)) {
+        if (!state.docs.some((d) => d.id === id)) {
+          delete imgPushed.current[id]
+          deleteDoc(fsDoc(getDb(), 'households', hid, 'data', `img_${id}`)).catch(() => {})
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [cloud.status, hid, state.docs])
 
   // 送信：APIキー・モデルを家族に共有（shareAiWithFamily が ON のときだけ書き込む）
   useEffect(() => {
