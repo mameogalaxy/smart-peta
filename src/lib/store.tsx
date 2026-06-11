@@ -497,8 +497,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         })),
       addInventory: (items) =>
         patch((s) => {
-          const existing = new Set(s.inventory.map((i) => i.name))
-          const fresh = items.filter((i) => i.name && !existing.has(i.name))
+          const norm = (n: string) => n.trim().toLowerCase()
+          const existing = new Set(s.inventory.map((i) => norm(i.name)))
+          const seen = new Set<string>()
+          const fresh = items
+            .map((i) => ({ ...i, name: i.name.trim() }))
+            .filter((i) => {
+              const k = norm(i.name)
+              if (!i.name || existing.has(k) || seen.has(k)) return false
+              seen.add(k)
+              return true
+            })
           return { ...s, inventory: [...fresh, ...s.inventory] }
         }),
       removeInventory: (id) => patch((s) => ({ ...s, inventory: s.inventory.filter((i) => i.id !== id) })),

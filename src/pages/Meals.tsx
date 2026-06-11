@@ -55,14 +55,15 @@ export function Meals() {
     })
   }
 
-  async function onLunchFile(file: File) {
+  async function onLunchFiles(files: FileList) {
     setLunchMsg('')
     setScanningLunch(true)
     try {
-      const small = await fileToScanData(file)
+      const imgs: string[] = []
+      for (const f of Array.from(files)) imgs.push(await fileToScanData(f))
       let res
       try {
-        res = await scanLunchMenu(small, aiSettings, todayISO())
+        res = await scanLunchMenu(imgs, aiSettings, todayISO())
       } catch (e) {
         if (e instanceof GeminiError && e.message === 'NO_KEY') res = demoLunchMenu()
         else throw e
@@ -95,8 +96,23 @@ export function Meals() {
         if (e instanceof GeminiError && e.message === 'NO_KEY') res = demoFridge()
         else throw e
       }
+      // 実際に新規追加された数を数えて、正直に表示する（既存は重複としてスキップ）
+      const have = new Set(state.inventory.map((i) => i.name.trim().toLowerCase()))
+      const seen = new Set<string>()
+      const addedNames = res.items
+        .map((n) => n.trim())
+        .filter((n) => {
+          const k = n.toLowerCase()
+          if (!n || have.has(k) || seen.has(k)) return false
+          seen.add(k)
+          return true
+        })
       store.addInventory(res.items.map((name) => ({ id: uid(), name, createdAt: Date.now() })))
-      setFridgeMsg(`${imgs.length}枚から${res.items.length}品を登録しました。続けて撮影/追加もできます。`)
+      setFridgeMsg(
+        addedNames.length
+          ? `${imgs.length}枚を読み取り、新たに${addedNames.length}品を追加しました（${addedNames.join('、')}）。`
+          : `${imgs.length}枚を読み取りましたが、すべて登録済みでした。`,
+      )
     } catch (e) {
       setFridgeMsg(e instanceof Error ? e.message : '読み取りに失敗しました。')
     } finally {
@@ -186,10 +202,10 @@ export function Meals() {
             ref={lunchRef}
             type="file"
             accept="image/*,application/pdf"
+            multiple
             className="hidden"
             onChange={(e) => {
-              const f = e.target.files?.[0]
-              if (f) void onLunchFile(f)
+              if (e.target.files && e.target.files.length) void onLunchFiles(e.target.files)
               e.target.value = ''
             }}
           />

@@ -316,24 +316,22 @@ const LUNCH_SCHEMA = {
 }
 
 /**
- * 学校給食の献立表（月間カレンダー形式が多い）を解析し、日付ごとのメニューを抽出する。
+ * 学校給食の献立表（月間カレンダー形式が多い）を解析し、日付ごとのメニューを抽出する（複数枚/PDF対応）。
  */
-export async function scanLunchMenu(imageDataUrl: string, settings: Settings, today: string): Promise<LunchMenuResult> {
-  const { mime, base64 } = splitDataUrl(imageDataUrl)
-  const prompt = `You read school lunch menu tables (often a monthly calendar). Today is ${today}. Respond with JSON only, all text values in Japanese.
-1. Read each date's lunch menu.
+export async function scanLunchMenu(images: string | string[], settings: Settings, today: string): Promise<LunchMenuResult> {
+  const list = Array.isArray(images) ? images : [images]
+  const prompt = `You read school lunch menu tables (often a monthly calendar)${list.length > 1 ? `, given as ${list.length} images/pages` : ''}. Today is ${today}. Respond with JSON only, all text values in Japanese.
+1. Read each date's lunch menu${list.length > 1 ? ' across all pages' : ''}.
 2. "items": list of { date: "YYYY-MM-DD", menu: "main dish/staple/soup, comma-separated, concise (Japanese)" } in date order.
 3. Prefer the year/month printed on the sheet; otherwise infer from today (${today}).
-4. Exclude weekends and "no lunch" days.`
+4. Exclude weekends and "no lunch" days. Merge duplicate dates.`
 
-  const raw = await generate(
-    [
-      { text: prompt },
-      { inline_data: { mime_type: mime, data: base64 } },
-    ],
-    settings,
-    { schema: LUNCH_SCHEMA, temperature: 0.1 },
-  )
+  const parts: { text?: string; inline_data?: { mime_type: string; data: string } }[] = [{ text: prompt }]
+  for (const img of list) {
+    const { mime, base64 } = splitDataUrl(img)
+    parts.push({ inline_data: { mime_type: mime, data: base64 } })
+  }
+  const raw = await generate(parts, settings, { schema: LUNCH_SCHEMA, temperature: 0.1 })
   return parseJson<LunchMenuResult>(raw)
 }
 
