@@ -275,18 +275,19 @@ const FRIDGE_SCHEMA = {
   required: ['items'],
 }
 
-/** 冷蔵庫の中（食材）の写真から、写っている食材を判定して列挙する。 */
-export async function scanFridge(imageDataUrl: string, settings: Settings): Promise<FridgeScanResult> {
-  const { mime, base64 } = splitDataUrl(imageDataUrl)
-  const prompt = `This is a photo of the inside of a fridge (or food items). List the foods you can see. Respond with JSON only; every item must be in Japanese.
+/** 冷蔵庫の中（食材）の写真から、写っている食材を判定して列挙する（複数枚対応）。 */
+export async function scanFridge(images: string | string[], settings: Settings): Promise<FridgeScanResult> {
+  const list = Array.isArray(images) ? images : [images]
+  const prompt = `These are ${list.length > 1 ? `${list.length} photos` : 'a photo'} of the inside of a fridge (or food items). List ALL the foods you can see across ${list.length > 1 ? 'all photos' : 'the photo'}. Respond with JSON only; every item must be in Japanese.
 - Use common names (e.g., 卵, 牛乳, にんじん, 豆腐, キャベツ, 鶏肉).
-- Only clearly identifiable items; for condiments include only major ones. Merge duplicates.
+- Only clearly identifiable items; for condiments include only major ones. Merge duplicates across photos.
 Return "items" as a Japanese string array.`
-  const raw = await generate(
-    [{ text: prompt }, { inline_data: { mime_type: mime, data: base64 } }],
-    settings,
-    { schema: FRIDGE_SCHEMA, temperature: 0.2, light: true },
-  )
+  const parts: { text?: string; inline_data?: { mime_type: string; data: string } }[] = [{ text: prompt }]
+  for (const img of list) {
+    const { mime, base64 } = splitDataUrl(img)
+    parts.push({ inline_data: { mime_type: mime, data: base64 } })
+  }
+  const raw = await generate(parts, settings, { schema: FRIDGE_SCHEMA, temperature: 0.2, light: true })
   return parseJson<FridgeScanResult>(raw)
 }
 

@@ -79,21 +79,24 @@ export function Meals() {
     }
   }
 
-  async function onFridgeFile(file: File) {
+  async function onFridgeFiles(files: FileList) {
     setFridgeMsg('')
     setScanningFridge(true)
     try {
-      const raw = await fileToDataUrl(file)
-      const small = await downscaleImage(raw).catch(() => raw)
+      const imgs: string[] = []
+      for (const f of Array.from(files)) {
+        const raw = await fileToDataUrl(f)
+        imgs.push(await downscaleImage(raw).catch(() => raw))
+      }
       let res
       try {
-        res = await scanFridge(small, aiSettings)
+        res = await scanFridge(imgs, aiSettings)
       } catch (e) {
         if (e instanceof GeminiError && e.message === 'NO_KEY') res = demoFridge()
         else throw e
       }
       store.addInventory(res.items.map((name) => ({ id: uid(), name, createdAt: Date.now() })))
-      setFridgeMsg(`${res.items.length}品を冷蔵庫に登録しました。`)
+      setFridgeMsg(`${imgs.length}枚から${res.items.length}品を登録しました。続けて撮影/追加もできます。`)
     } catch (e) {
       setFridgeMsg(e instanceof Error ? e.message : '読み取りに失敗しました。')
     } finally {
@@ -244,20 +247,20 @@ export function Meals() {
             ref={fridgeRef}
             type="file"
             accept="image/*"
+            multiple
             className="hidden"
             onChange={(e) => {
-              const f = e.target.files?.[0]
-              if (f) void onFridgeFile(f)
+              if (e.target.files && e.target.files.length) void onFridgeFiles(e.target.files)
               e.target.value = ''
             }}
           />
           <Button variant="soft" onClick={() => fridgeRef.current?.click()} disabled={scanningFridge}>
-            {scanningFridge ? <Spinner /> : <CameraIcon width={18} height={18} />} 冷蔵庫を撮影
+            {scanningFridge ? <Spinner /> : <CameraIcon width={18} height={18} />} 冷蔵庫を撮影/選択
           </Button>
         </div>
 
         <p className="text-xs text-slate-400">
-          冷蔵庫の中を撮影するとAIが食材を判定して登録します。AI提案は、ここにある食材を活かして考えます。
+          冷蔵庫の中を撮影、または写真フォルダから<strong>複数枚まとめて</strong>選ぶとAIが食材を判定して登録します（何回でも追加OK）。AI提案は、ここにある食材を活かして考えます。
         </p>
 
         <div className="flex gap-2">

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { type CSSProperties, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStore } from '../lib/store'
 import { getUsage, resetUsage } from '../lib/usage'
@@ -98,11 +98,15 @@ export function Settings() {
             <div className="flex gap-2">
               <input
                 className={inputClass}
-                type={showKey ? 'text' : 'password'}
+                type="text"
+                style={{ WebkitTextSecurity: showKey ? 'none' : 'disc' } as unknown as CSSProperties}
                 value={s.geminiApiKey}
                 onChange={(e) => updateSettings({ geminiApiKey: e.target.value.trim() })}
                 placeholder="AIza..."
                 autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
               />
               <Button variant="ghost" onClick={() => setShowKey((v) => !v)}>
                 {showKey ? '隠す' : '表示'}
@@ -130,11 +134,15 @@ export function Settings() {
             <div className="flex gap-2">
               <input
                 className={inputClass}
-                type={showKey2 ? 'text' : 'password'}
+                type="text"
+                style={{ WebkitTextSecurity: showKey2 ? 'none' : 'disc' } as unknown as CSSProperties}
                 value={s.geminiApiKey2 ?? ''}
                 onChange={(e) => updateSettings({ geminiApiKey2: e.target.value.trim() })}
                 placeholder="AIza...（任意）"
                 autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
               />
               <Button variant="ghost" onClick={() => setShowKey2((v) => !v)}>
                 {showKey2 ? '隠す' : '表示'}
