@@ -389,6 +389,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (cloud.status !== 'on' || !hid) return
     for (const col of SYNCED) {
+      // 重要: クラウドからの初回受信(lastSync記録)前は送らない。
+      // 参加直後にこの端末の空データで世帯データを上書きしてしまう事故を防ぐ。
+      if (!(col in lastSync.current)) continue
       const items = stripImages(col, state[col] as unknown[])
       const ser = JSON.stringify(items)
       if (ser !== lastSync.current[col]) {

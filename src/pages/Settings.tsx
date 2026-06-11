@@ -28,6 +28,7 @@ export function Settings() {
   const confirm = useConfirm()
   const restoreFileRef = useRef<HTMLInputElement>(null)
   const [backupMsg, setBackupMsg] = useState('')
+  const [idCopied, setIdCopied] = useState(false)
 
   function backupNow() {
     try {
@@ -530,6 +531,33 @@ export function Settings() {
                 写真を外す
               </button>
             )}
+
+            {/* 引き継ぎID（別端末・ホーム画面追加時に同じ人としてログインするためのID） */}
+            {s.householdId && s.memberId && (
+              <div className="rounded-lg bg-white/70 p-2">
+                <p className="text-[11px] font-bold text-slate-500">引き継ぎID（別の端末で「自分」として再開）</p>
+                <div className="mt-1 flex items-center gap-2">
+                  <code className="min-w-0 flex-1 truncate text-[11px] text-slate-500">{s.householdId}.{s.memberId}</code>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(`${s.householdId}.${s.memberId}`)
+                        setIdCopied(true)
+                        window.setTimeout(() => setIdCopied(false), 2000)
+                      } catch {
+                        /* noop */
+                      }
+                    }}
+                    className="shrink-0 rounded-lg bg-brand-50 px-2.5 py-1 text-[11px] font-bold text-brand-700 active:bg-brand-100"
+                  >
+                    {idCopied ? 'コピーしました' : 'コピー'}
+                  </button>
+                </div>
+                <p className="mt-1 text-[11px] text-slate-400">
+                  ホーム画面追加・機種変更などで初回画面が出たら、このIDでログインすると同じプロフィール・データで再開できます。
+                </p>
+              </div>
+            )}
           </div>
 
           {state.family.filter((f) => f.id !== s.memberId).map((f) => (
@@ -561,6 +589,28 @@ export function Settings() {
                   />
                 ))}
               </div>
+              <button
+                onClick={async () => {
+                  const prevId = s.memberId
+                  const sameName = !!prevId && (s.memberName ?? '').trim() === f.name.trim()
+                  const ok = await confirm({
+                    title: 'この人を自分にする',
+                    message: sameName
+                      ? `「${f.name}」を自分として設定します。重複している今の「${s.memberName}」は削除されます。`
+                      : `「${f.name}」を自分として設定しますか？（この端末の利用者が切り替わります）`,
+                    confirmLabel: '自分にする',
+                  })
+                  if (!ok) return
+                  updateSettings({ memberName: f.name, memberColor: f.color, memberPhoto: f.photo, memberId: f.id })
+                  // 同名の旧自分は重複なので家族リストから除去
+                  if (sameName && prevId && prevId !== f.id) {
+                    setFamily(state.family.filter((x) => x.id !== prevId))
+                  }
+                }}
+                className="pl-1 text-xs font-semibold text-brand-600"
+              >
+                この人を自分にする（この端末の利用者に設定）
+              </button>
             </div>
           ))}
           <div className="flex gap-2 pt-1">
