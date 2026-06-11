@@ -33,10 +33,39 @@ export function OnboardingGate() {
     })
   }
 
+  /** 既に世帯に登録済みのメンバーを「自分」として選ぶ（別端末・再インストール時の本人認識） */
+  function pickExisting(m: { id: string; name: string; color: string; photo?: string }) {
+    updateSettings({ memberName: m.name, memberColor: m.color, memberPhoto: m.photo, memberId: m.id })
+  }
+
+  // 世帯に参加していて、既存メンバーがいる場合は「自分を選ぶ」導線を出す
+  const existingMembers = state.family
+
   return (
     <Modal open onClose={() => {}} title="はじめまして">
       <div className="space-y-3">
+        {existingMembers.length > 0 && (
+          <div className="rounded-xl border border-brand-200 bg-brand-50/60 p-3">
+            <p className="mb-2 text-sm font-bold text-brand-700">あなたはどの人ですか？</p>
+            <div className="flex flex-wrap gap-2">
+              {existingMembers.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => pickExisting(m)}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 active:bg-slate-50"
+                >
+                  <Avatar member={m} size={20} /> {m.name}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-[11px] text-slate-400">
+              この端末を使うあなたを選ぶと、その人として認識されます。当てはまる人がいなければ下で新規登録してください。
+            </p>
+          </div>
+        )}
+
         <p className="text-sm text-slate-600">
+          {existingMembers.length > 0 ? '新しく登録する場合：' : ''}
           あなたのプロフィールを登録してください。家族の予定・買い物・担当で「誰が」を表示します。
         </p>
 

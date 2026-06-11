@@ -439,15 +439,30 @@ export function Settings() {
             onClick={() =>
               setAppQr({
                 title: `${s.householdName}の掲示板`,
-                url: appUrl,
-                hint: 'スマホのカメラで読み取るとスマートピタが開きます',
+                // 世帯に参加中なら、読み取った家族が同じ世帯に参加して同じ内容を見られるQRにする
+                url: s.householdId
+                  ? HAS_DEFAULT_FIREBASE
+                    ? `${appUrl}?join=${s.householdId}`
+                    : `${appUrl}?invite=${encodeInvite(s.firebaseConfig ?? '', s.householdId)}`
+                  : appUrl,
+                hint: s.householdId
+                  ? '家族がスマホで読み取ると、同じ掲示板に参加して内容を共有できます'
+                  : 'スマホのカメラで読み取るとスマートピタが開きます',
               })
             }
           >
             <QrIcon width={18} height={18} /> アプリのQRコードを作成・印刷
           </Button>
           <p className="text-xs text-slate-400">
-            家族みんなで使うためのQRです。印刷して冷蔵庫に貼れば、スマホで読み取ってすぐ開けます。
+            {s.householdId ? (
+              <>
+                家族みんなで使うためのQRです。印刷して冷蔵庫に貼れば、<strong>読み取った家族は同じ掲示板に参加</strong>して、同じ予定・書類・買い物を見られます（新規ユーザーになりません）。
+              </>
+            ) : (
+              <>
+                家族みんなで使うためのQRです。印刷して冷蔵庫に貼れば、スマホで読み取ってすぐ開けます。<strong>家族で内容を共有するには、先に上の「家族でクラウド共有」で世帯を作成</strong>してください。
+              </>
+            )}
             <br />
             各書類ごとのQRは
             <Link to="/docs" className="font-semibold text-brand-600">［書類］</Link>
