@@ -162,6 +162,10 @@ interface StoreApi {
   // 設定
   updateSettings: (patch: Partial<Settings>) => void
   resetAll: () => void
+  /** 全データをJSON文字列で書き出す（バックアップ） */
+  exportData: () => string
+  /** バックアップJSONから復元する。成功でtrue */
+  importData: (json: string) => boolean
   /** 実際にAI呼び出しで使う設定（自分のキーが無ければ家族共有キーを補完） */
   aiSettings: Settings
   // 家族クラウド共有
@@ -504,6 +508,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       resetAll: () => {
         localStorage.removeItem(STORAGE_KEY)
         setState(initialState())
+      },
+      exportData: () => JSON.stringify({ app: 'smart-peta', version: 1, exportedAt: Date.now(), state }),
+      importData: (json) => {
+        try {
+          const parsed = JSON.parse(json)
+          // バックアップ形式 {state:{...}} でも、状態そのものでも受け付ける
+          const data = (parsed && parsed.state ? parsed.state : parsed) as Partial<AppState>
+          if (!data || typeof data !== 'object') return false
+          const base = initialState()
+          const next: AppState = {
+            ...base,
+            ...data,
+            docs: Array.isArray(data.docs) ? data.docs : [],
+            events: Array.isArray(data.events) ? data.events : [],
+            recipes: Array.isArray(data.recipes) ? data.recipes : [],
+            shopping: Array.isArray(data.shopping) ? data.shopping : [],
+            meals: Array.isArray(data.meals) ? data.meals : [],
+            inventory: Array.isArray(data.inventory) ? data.inventory : [],
+            family: Array.isArray(data.family) && data.family.length ? data.family : base.family,
+            settings: { ...base.settings, ...(data.settings ?? {}) },
+          }
+          lastSync.current = {}
+          imgPushed.current = {}
+          setState(next)
+          return true
+        } catch {
+          return false
+        }
       },
       cloud,
       createHousehold: async (name) => {

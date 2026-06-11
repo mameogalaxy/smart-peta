@@ -24,8 +24,45 @@ function yen(n: number): string {
 }
 
 export function Settings() {
-  const { state, updateSettings, setFamily, resetAll, cloud, createHousehold, joinHousehold, leaveHousehold } = useStore()
+  const { state, updateSettings, setFamily, resetAll, cloud, createHousehold, joinHousehold, leaveHousehold, exportData, importData } = useStore()
   const confirm = useConfirm()
+  const restoreFileRef = useRef<HTMLInputElement>(null)
+  const [backupMsg, setBackupMsg] = useState('')
+
+  function backupNow() {
+    try {
+      const blob = new Blob([exportData()], { type: 'application/json' })
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      const d = new Date()
+      a.download = `smartpita-backup-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}.json`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000)
+      setBackupMsg('バックアップを保存しました。')
+    } catch {
+      setBackupMsg('バックアップに失敗しました。')
+    }
+  }
+
+  async function onRestoreFile(file: File) {
+    const text = await file.text().catch(() => '')
+    if (!text) {
+      setBackupMsg('ファイルを読み込めませんでした。')
+      return
+    }
+    if (
+      !(await confirm({
+        title: 'バックアップから復元',
+        message: '現在のこの端末のデータは、バックアップの内容で置き換わります。よろしいですか？',
+        confirmLabel: '復元する',
+        danger: true,
+      }))
+    )
+      return
+    setBackupMsg(importData(text) ? '復元しました。' : '復元に失敗しました（ファイル形式をご確認ください）。')
+  }
   const s = state.settings
   const [showKey, setShowKey] = useState(false)
   const [showKey2, setShowKey2] = useState(false)
@@ -568,6 +605,34 @@ export function Settings() {
             書類{state.docs.length}件・予定{state.events.length}件・レシピ{state.recipes.length}件を
             この端末に保存しています。データとAPIキーはこの端末内（ブラウザ）だけに保存され、外部やリポジトリには送られません。
           </p>
+
+          {/* バックアップ / 復元 */}
+          <div className="space-y-2 rounded-xl border border-slate-200 p-3">
+            <p className="text-xs font-bold text-slate-500">バックアップ（端末の消去対策）</p>
+            <input
+              ref={restoreFileRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (f) void onRestoreFile(f)
+                e.target.value = ''
+              }}
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="soft" onClick={backupNow}>
+                バックアップを保存
+              </Button>
+              <Button variant="ghost" onClick={() => restoreFileRef.current?.click()}>
+                復元（読み込み）
+              </Button>
+            </div>
+            {backupMsg && <p className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-600">{backupMsg}</p>}
+            <p className="text-[11px] text-slate-400">
+              「保存」でこの端末の全データをファイル（JSON）に書き出します。端末の不調やブラウザの自動削除に備え、ときどき保存しておくと安心です。<strong>家族でクラウド共有</strong>を使うと、データはクラウドにも保管され、機種変更や再インストールでも復元できます。
+            </p>
+          </div>
           <Button
             variant="danger"
             className="w-full"
