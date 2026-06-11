@@ -5,10 +5,12 @@ import { DOC_CATEGORIES, type CalendarEvent, type DocCategory } from '../types'
 import { CategoryIcon } from './CategoryIcon'
 import { Avatar } from './Avatar'
 import { useConfirm } from '../lib/confirm'
+import { type Repeat, REPEATS, buildRepeatDates } from '../lib/recurrence'
+import { formatJpDate, uid } from '../lib/util'
 
 /** 既存の予定を編集・削除するシート（ホーム/カレンダーから共通利用） */
 export function EventEditModal({ event, onClose }: { event: CalendarEvent | null; onClose: () => void }) {
-  const { state, updateEvent, removeEvent, removeEventSeries } = useStore()
+  const { state, updateEvent, addEvents, removeEvent, removeEventSeries } = useStore()
   const confirm = useConfirm()
   const [title, setTitle] = useState('')
   const [date, setDate] = useState('')
@@ -16,6 +18,8 @@ export function EventEditModal({ event, onClose }: { event: CalendarEvent | null
   const [category, setCategory] = useState<DocCategory>('other')
   const [assignee, setAssignee] = useState<string>('')
   const [done, setDone] = useState(false)
+  const [repeat, setRepeat] = useState<Repeat>('none')
+  const [count, setCount] = useState(8)
 
   useEffect(() => {
     if (event) {
@@ -25,23 +29,47 @@ export function EventEditModal({ event, onClose }: { event: CalendarEvent | null
       setCategory(event.category)
       setAssignee(event.assignee ?? '')
       setDone(event.done)
+      setRepeat('none')
+      setCount(8)
     }
   }, [event])
 
   if (!event) return null
 
   const seriesCount = event.seriesId ? state.events.filter((e) => e.seriesId === event.seriesId).length : 0
+  const repeatDates = buildRepeatDates(date, repeat, count)
 
   function save() {
     if (!event || !title.trim()) return
-    updateEvent(event.id, {
+    const base = {
       title: title.trim(),
       date,
       time: time || undefined,
       category,
       assignee: assignee || undefined,
       done,
-    })
+    }
+    if (repeat !== 'none') {
+      // この予定を起点にくり返しを作成（先頭=この予定、2件目以降を新規追加）
+      const seriesId = event.seriesId || uid()
+      updateEvent(event.id, { ...base, seriesId })
+      const extra: CalendarEvent[] = repeatDates.slice(1).map((d) => ({
+        id: uid(),
+        title: base.title,
+        date: d,
+        time: base.time,
+        category,
+        assignee: base.assignee,
+        seriesId,
+        remind: event.remind,
+        remindMinutes: event.remindMinutes,
+        done: false,
+        createdAt: Date.now(),
+      }))
+      if (extra.length) addEvents(extra)
+    } else {
+      updateEvent(event.id, base)
+    }
     onClose()
   }
 
@@ -99,6 +127,40 @@ export function EventEditModal({ event, onClose }: { event: CalendarEvent | null
           </div>
         )}
 
+        {/* くり返し（この予定を起点に一括追加） */}
+        {!event.seriesId && (
+          <div>
+            <span className="mb-1 block text-sm font-semibold text-slate-600">くり返しにする</span>
+            <div className="flex flex-wrap gap-2">
+              {REPEATS.map((r) => (
+                <button
+                  key={r.value}
+                  onClick={() => setRepeat(r.value)}
+                  className={`rounded-full px-3 py-1.5 text-sm font-semibold ${repeat === r.value ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-500'}`}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+            {repeat !== 'none' && (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-sm text-slate-500">回数</span>
+                <input
+                  type="number"
+                  min={2}
+                  max={52}
+                  className={`${inputClass} w-24 py-1.5`}
+                  value={count}
+                  onChange={(e) => setCount(Math.min(52, Math.max(2, Number(e.target.value) || 2)))}
+                />
+                <span className="text-xs text-slate-400">
+                  {formatJpDate(repeatDates[0])} 〜 {formatJpDate(repeatDates[repeatDates.length - 1])}（{repeatDates.length}件）
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
         <label className="flex items-center gap-2 text-sm font-semibold text-slate-600">
           <input type="checkbox" checked={done} onChange={(e) => setDone(e.target.checked)} className="h-5 w-5 accent-brand-500" />
           完了にする
@@ -117,7 +179,7 @@ export function EventEditModal({ event, onClose }: { event: CalendarEvent | null
             削除
           </Button>
           <Button className="flex-1" disabled={!title.trim()} onClick={save}>
-            保存
+            {repeat === 'none' ? '保存' : `くり返しで${repeatDates.length}件にする`}
           </Button>
         </div>
 
