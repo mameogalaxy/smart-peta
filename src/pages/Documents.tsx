@@ -15,6 +15,7 @@ import { makeQrDataUrl, docShareUrl } from '../lib/qr'
 import { printHtml, escapeHtml } from '../lib/print'
 import { ICON_SRC } from '../brand'
 import type { ReactNode } from 'react'
+import { renderPdfPages } from '../lib/pdf'
 
 export function Documents() {
   const store = useStore()
@@ -70,8 +71,13 @@ export function Documents() {
     if (!detail) return
     const adds: string[] = []
     for (const f of Array.from(files)) {
-      const raw = await fileToDataUrl(f)
-      adds.push(await downscaleImage(raw).catch(() => raw))
+      if (f.type === 'application/pdf') {
+        const rendered = await renderPdfPages(f)
+        adds.push(...rendered.pages)
+      } else {
+        const raw = await fileToDataUrl(f)
+        adds.push(await downscaleImage(raw).catch(() => raw))
+      }
     }
     setDetailImages([...detailImages(detail), ...adds])
   }
@@ -311,7 +317,7 @@ export function Documents() {
             <input
               ref={detailFileRef}
               type="file"
-              accept="image/*"
+              accept="image/*,application/pdf"
               multiple
               className="hidden"
               onChange={(e) => {
@@ -328,7 +334,7 @@ export function Documents() {
                     className="flex w-full flex-col items-center gap-2 rounded-xl border-2 border-dashed border-slate-200 py-6 text-slate-400 active:bg-slate-50"
                   >
                     <CameraIcon width={28} height={28} />
-                    <span className="text-sm font-semibold">写真を追加</span>
+                    <span className="text-sm font-semibold">写真・PDFを追加</span>
                   </button>
                 )
               }
@@ -358,7 +364,7 @@ export function Documents() {
                       className="flex w-full shrink-0 snap-center flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-brand-300 bg-brand-50 text-brand-500"
                     >
                       <PlusIcon width={28} height={28} />
-                      <span className="text-sm font-semibold">写真を追加</span>
+                      <span className="text-sm font-semibold">写真・PDFを追加</span>
                     </button>
                   </div>
                   <div className="mt-1 flex items-center justify-between">
@@ -366,7 +372,7 @@ export function Documents() {
                       {imgs.length > 1 ? 'スワイプで切替／タップで拡大' : 'タップで拡大'}
                     </span>
                     <button onClick={() => detailFileRef.current?.click()} className="text-xs font-semibold text-brand-600">
-                      ＋ 写真を追加
+                      ＋ 写真・PDFを追加
                     </button>
                   </div>
                   <Button

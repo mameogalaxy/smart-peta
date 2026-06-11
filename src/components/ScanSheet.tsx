@@ -9,6 +9,7 @@ import { fileToScanData, isPdfDataUrl, saveImagesToDevice, todayISO, uid, format
 import { DOC_CATEGORIES, type DocCategory } from '../types'
 import { CategoryIcon } from './CategoryIcon'
 import { DocIcon } from './icons'
+import { renderPdfPages } from '../lib/pdf'
 
 type Phase = 'pick' | 'confirm' | 'analyzing' | 'review'
 
@@ -16,6 +17,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
   const store = useStore()
   const aiSettings = store.aiSettings
   const fileRef = useRef<HTMLInputElement>(null)
+  const fileLoadId = useRef(0)
   const [saveToPhotos, setSaveToPhotos] = useState(store.state.settings.saveScansToPhotos ?? false)
 
   const [phase, setPhase] = useState<Phase>('pick')
@@ -36,8 +38,10 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
   const [refining, setRefining] = useState(false)
   // 撮影後のAIへの追加指示（任意）
   const [instruction, setInstruction] = useState('')
+  const [convertingPdf, setConvertingPdf] = useState(false)
 
   function reset() {
+    fileLoadId.current += 1
     setPhase('pick')
     setImages([])
     setError('')
@@ -52,6 +56,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
     setIsManual(false)
     setRefining(false)
     setInstruction('')
+    setConvertingPdf(false)
   }
 
   function close() {
@@ -60,13 +65,33 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
   }
 
   async function onFiles(files: FileList) {
+    const loadId = ++fileLoadId.current
     setError('')
+    setConvertingPdf(true)
     const smalls: string[] = []
-    for (const f of Array.from(files)) {
-      smalls.push(await fileToScanData(f))
+    let warning = ''
+    try {
+      for (const f of Array.from(files)) {
+        if (f.type === 'application/pdf') {
+          const rendered = await renderPdfPages(f)
+          smalls.push(...rendered.pages)
+          if (rendered.pages.length < rendered.totalPages) {
+            warning = `PDFは先頭${rendered.pages.length}ページを取り込みました（全${rendered.totalPages}ページ）。`
+          }
+        } else {
+          smalls.push(await fileToScanData(f))
+        }
+      }
+      if (loadId !== fileLoadId.current) return
+      setImages((prev) => [...prev, ...smalls])
+      setError(warning)
+      setPhase('confirm')
+    } catch (e) {
+      if (loadId !== fileLoadId.current) return
+      setError(e instanceof Error ? `PDFの読み込みに失敗しました: ${e.message}` : 'PDFの読み込みに失敗しました。')
+    } finally {
+      if (loadId === fileLoadId.current) setConvertingPdf(false)
     }
-    setImages((prev) => [...prev, ...smalls])
-    setPhase('confirm')
   }
 
   function toReview(res: ScanResult, opts: { demo?: boolean; manual?: boolean; simple?: boolean } = {}) {
@@ -159,7 +184,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
     if (!result) return
     const now = Date.now()
     const docId = uid()
-    // 画像（PDFは表示できないため除外）。複数枚は全部保存してスライド表示。代表＝先頭。
+    // PDFは選択時にページ画像へ変換済み。複数枚は全部保存してスライド表示。代表＝先頭。
     const imgs = images.filter((x) => !isPdfDataUrl(x))
     const image = imgs[0] ?? ''
     // 端末（写真フォルダ）にも保存（保存ボタンのタップ操作中に共有シートを出す）
@@ -229,12 +254,18 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
         type="file"
         accept="image/*,application/pdf"
         multiple
+        disabled={convertingPdf}
         className="hidden"
         onChange={(e) => {
           if (e.target.files && e.target.files.length) void onFiles(e.target.files)
           e.target.value = ''
         }}
       />
+      {convertingPdf && (
+        <div className="mb-3 flex items-center justify-center gap-2 rounded-xl bg-brand-50 px-3 py-3 text-sm font-semibold text-brand-700">
+          <Spinner /> PDFをページ画像に変換中…
+        </div>
+      )}
       {phase === 'pick' && (
         <div>
           <p className="mb-4 text-sm text-slate-500">

@@ -26,7 +26,7 @@ export interface DocItem {
   summary: string
   /** 代表画像（=images[0]）。一覧のサムネ用。dataURLでローカル保存 */
   image?: string
-  /** 複数ページの画像（dataURL配列）。詳細でスライド表示。ローカル保存 */
+  /** 複数ページの画像（PDFはページごとにJPEG化）。詳細でスライド表示。ローカル保存 */
   images?: string[]
   createdAt: number
 }
