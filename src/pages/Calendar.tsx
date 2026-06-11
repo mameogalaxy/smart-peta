@@ -102,6 +102,14 @@ export function Calendar() {
 
   const appUrl = (state.settings.shareBaseUrl || window.location.origin + window.location.pathname).replace(/[?#].*$/, '')
 
+  // フィルタ表示順：家族全員 → 本人 → 本人以外
+  const orderedFamily = useMemo(() => {
+    const me = state.settings.memberId
+    const self = state.family.filter((f) => f.id === me)
+    const others = state.family.filter((f) => f.id !== me)
+    return [...self, ...others]
+  }, [state.family, state.settings.memberId])
+
   // 中央「＋」メニューからの「予定を追加」(?add=1) で追加モーダルを開く
   useEffect(() => {
     if (params.get('add') === '1') {
@@ -229,7 +237,7 @@ export function Calendar() {
           >
             家族全員
           </button>
-          {state.family.map((f) => {
+          {orderedFamily.map((f) => {
             const active = filterMember === f.id
             const isSelf = f.id === state.settings.memberId
             return (

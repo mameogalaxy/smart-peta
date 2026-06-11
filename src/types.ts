@@ -74,6 +74,10 @@ export interface ShoppingItem {
   /** 由来のレシピID（あれば） */
   fromRecipeId?: string
   addedBy?: string
+  /** 欲しいものリストの項目か（買い物リストと区別） */
+  wish?: boolean
+  /** 商品ページなどのURL（欲しいもの用・任意） */
+  url?: string
   createdAt: number
 }
 

@@ -153,6 +153,13 @@ export const CopyIcon = (p: P) => (
   </svg>
 )
 
+export const LinkIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M10 13a5 5 0 0 0 7.07 0l2.5-2.5a5 5 0 0 0-7.07-7.07L11.5 4.5" />
+    <path d="M14 11a5 5 0 0 0-7.07 0l-2.5 2.5a5 5 0 0 0 7.07 7.07L12.5 19.5" />
+  </svg>
+)
+
 export const GridIcon = (p: P) => (
   <svg {...base(p)}>
     <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
