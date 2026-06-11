@@ -48,6 +48,9 @@ jobs:
       # JS/CSSをHTMLに全インライン化した単一ファイルで配信し、
       # 外部アセットの404による白画面を原理的に防ぐ。
       - run: npm run build:pages
+      # 404.html を index.html のコピーにして、どのパスでもアプリを返す（SPAフォールバック）。
+      # 家族が古い/別パスのURLを開いても 404 にならず必ずアプリが開く。
+      - run: cp dist/index.html dist/404.html
       - uses: actions/configure-pages@v5
         with:
           enablement: true
