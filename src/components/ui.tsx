@@ -1,5 +1,5 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react'
-import { useEffect } from 'react'
+import type { ButtonHTMLAttributes, CSSProperties, ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import { CloseIcon } from './icons'
 
 export function Card({
@@ -105,22 +105,49 @@ export function Modal({
   title?: string
   children: ReactNode
 }) {
+  // ソフトキーボードで下部ボタンが隠れないよう、表示中のビューポートに合わせる
+  const [vv, setVv] = useState<{ top: number; height: number } | null>(null)
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     document.addEventListener('keydown', onKey)
     document.body.style.overflow = 'hidden'
+    const v = window.visualViewport
+    const update = () => v && setVv({ top: v.offsetTop, height: v.height })
+    if (v) {
+      update()
+      v.addEventListener('resize', update)
+      v.addEventListener('scroll', update)
+    }
     return () => {
       document.removeEventListener('keydown', onKey)
       document.body.style.overflow = ''
+      if (v) {
+        v.removeEventListener('resize', update)
+        v.removeEventListener('scroll', update)
+      }
+      setVv(null)
     }
   }, [open, onClose])
 
   if (!open) return null
+  // visualViewport が使える端末では、キーボードを除いた見える領域にモーダルを収める
+  const frameStyle: CSSProperties = vv
+    ? { position: 'fixed', left: 0, right: 0, top: vv.top, height: vv.height }
+    : {}
+  const sheetStyle: CSSProperties = vv ? { maxHeight: Math.round(vv.height * 0.96) } : {}
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" role="dialog" aria-modal="true">
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
+      style={frameStyle}
+      role="dialog"
+      aria-modal="true"
+    >
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="animate-pop safe-bottom relative z-10 max-h-[88vh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 pb-8 shadow-xl sm:max-w-lg sm:rounded-3xl">
+      <div
+        className="animate-pop safe-bottom relative z-10 max-h-[88vh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 pb-10 shadow-xl sm:max-w-lg sm:rounded-3xl"
+        style={sheetStyle}
+      >
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-lg font-bold">{title}</h3>
           <button onClick={onClose} className="rounded-full p-1.5 text-slate-400 active:bg-slate-100">

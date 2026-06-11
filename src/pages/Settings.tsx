@@ -340,7 +340,7 @@ export function Settings() {
                     参加
                   </Button>
                 </div>
-                <p className="mt-1 text-[11px] text-slate-400">参加すると、この端末の内容は家族の内容に置き換わります。</p>
+                <p className="mt-1 text-[11px] text-slate-400">参加すると、この端末の内容と家族の内容が<strong>統合</strong>されます（あなたの予定は消えません）。</p>
               </div>
             </div>
           ) : (

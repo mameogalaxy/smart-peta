@@ -167,16 +167,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [cloud, setCloud] = useState<{ status: CloudStatus; error: string }>({ status: 'off', error: '' })
   /** 直近に同期した各コレクションの内容（エコー防止用） */
   const lastSync = useRef<Record<string, string>>({})
+  /** 参加直後、最初の受信でローカルの内容を世帯にマージする対象コレクション（データ消失防止） */
+  const mergeCols = useRef<Set<string>>(new Set())
   /** 家族から共有されたAI設定（APIキー・モデル）。自分のキーが無いときの補完に使う。 */
   const [cloudAI, setCloudAI] = useState<Partial<Settings>>({})
 
   const applyRemote = useCallback((col: SyncedKey, items: unknown[]) => {
+    // 参加直後の初回受信だけはローカルを世帯へマージ（既存の予定などが消えないように）
+    const doMerge = mergeCols.current.has(col)
+    if (doMerge) mergeCols.current.delete(col)
+    // lastSync は「受信した世帯の内容」を記録。マージ時は state がそれと変わるので送信effectが発火→マージ結果をアップロード
     lastSync.current[col] = JSON.stringify(items)
     setState((s) => {
       if (col === 'docs') {
         const localById = new Map(s.docs.map((d) => [d.id, d]))
-        const merged = (items as DocItem[]).map((d) => ({ ...d, image: d.image ?? localById.get(d.id)?.image }))
-        return { ...s, docs: merged }
+        const remote = (items as DocItem[]).map((d) => ({ ...d, image: d.image ?? localById.get(d.id)?.image }))
+        if (doMerge) {
+          const byId = new Map<string, DocItem>(remote.map((d) => [d.id, d]))
+          for (const d of s.docs) if (!byId.has(d.id)) byId.set(d.id, d)
+          return { ...s, docs: [...byId.values()] }
+        }
+        return { ...s, docs: remote }
+      }
+      if (doMerge) {
+        const arr = items as { id?: string }[]
+        const byId = new Map(arr.filter((x) => x && x.id != null).map((x) => [x.id, x]))
+        for (const x of s[col] as { id?: string }[]) {
+          if (x && x.id != null && !byId.has(x.id)) byId.set(x.id, x)
+        }
+        return { ...s, [col]: [...byId.values()] } as AppState
       }
       return { ...s, [col]: items } as AppState
     })
@@ -434,6 +453,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           /* noop */
         }
         lastSync.current = {}
+        // 初回受信でこの端末のデータを世帯にマージ（既存予定などの消失を防ぐ）
+        mergeCols.current = new Set(SYNCED)
         patch((s) => ({
           ...s,
           settings: { ...s.settings, firebaseConfig: configToUse, householdId: targetHid, householdName2: hname },
