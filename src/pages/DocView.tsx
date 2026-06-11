@@ -53,14 +53,24 @@ export function DocView() {
             <span className="mt-1 block text-center text-[11px] text-slate-400">タップで拡大</span>
           </a>
         )}
-        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200/70">
-          <p className="text-xs font-bold text-slate-400">要約</p>
-          <p className="mt-1 text-slate-700">{doc.summary}</p>
-        </div>
-        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200/70">
-          <p className="mb-1 text-xs font-bold text-slate-400">内容</p>
-          <pre className="whitespace-pre-wrap text-sm text-slate-600">{doc.text}</pre>
-        </div>
+        {doc.note && (
+          <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200/70">
+            <p className="text-xs font-bold text-slate-400">メモ</p>
+            <p className="mt-1 whitespace-pre-wrap text-slate-700">{doc.note}</p>
+          </div>
+        )}
+        {doc.summary && (
+          <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200/70">
+            <p className="text-xs font-bold text-slate-400">要約</p>
+            <p className="mt-1 text-slate-700">{doc.summary}</p>
+          </div>
+        )}
+        {doc.text && (
+          <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200/70">
+            <p className="mb-1 text-xs font-bold text-slate-400">内容</p>
+            <pre className="whitespace-pre-wrap text-sm text-slate-600">{doc.text}</pre>
+          </div>
+        )}
         <Link to="/" className="block rounded-xl bg-brand-500 py-3 text-center text-sm font-semibold text-white">
           アプリで開く
         </Link>

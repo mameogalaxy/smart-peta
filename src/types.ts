@@ -18,6 +18,8 @@ export interface DocItem {
   id: string
   title: string
   category: DocCategory
+  /** 利用者が入力・編集するメモ */
+  note?: string
   /** AIが抽出した本文テキスト（OCR） */
   text: string
   /** AIの要約 */

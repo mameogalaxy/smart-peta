@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { Modal, Button, Field, inputClass, Spinner, Badge } from './ui'
-import { CameraIcon, CloseIcon, SparkleIcon } from './icons'
+import { CameraIcon, CheckIcon, CloseIcon, SparkleIcon } from './icons'
 import { useStore } from '../lib/store'
 import { scanDocument, analyzeDocumentText, GeminiError, type ScanResult } from '../lib/gemini'
 import { demoScan } from '../lib/demo'
@@ -28,6 +28,8 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
   const [addIngredients, setAddIngredients] = useState(true)
   const [category, setCategory] = useState<DocCategory>('other')
   const [title, setTitle] = useState('')
+  const [note, setNote] = useState('')
+  const [isSimple, setIsSimple] = useState(false)
   // 手入力（テキスト貼り付け）モード
   const [manualText, setManualText] = useState('')
   const [isManual, setIsManual] = useState(false)
@@ -44,6 +46,8 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
     setPickedEvents(new Set())
     setCategory('other')
     setTitle('')
+    setNote('')
+    setIsSimple(false)
     setManualText('')
     setIsManual(false)
     setRefining(false)
@@ -65,14 +69,29 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
     setPhase('confirm')
   }
 
-  function toReview(res: ScanResult, opts: { demo?: boolean; manual?: boolean } = {}) {
+  function toReview(res: ScanResult, opts: { demo?: boolean; manual?: boolean; simple?: boolean } = {}) {
     setResult(res)
     setCategory(res.category)
     setTitle(res.title)
     setPickedEvents(new Set(res.events.map((_, i) => i)))
     setUsedDemo(!!opts.demo)
     setIsManual(!!opts.manual)
+    setIsSimple(!!opts.simple)
     setPhase('review')
+  }
+
+  /** AI解析を行わず、写真・タイトル・カテゴリ・メモだけで登録する */
+  function startSimple() {
+    toReview(
+      {
+        title: images.length ? '書類' : 'メモ',
+        category: 'other',
+        summary: '',
+        text: '',
+        events: [],
+      },
+      { simple: true },
+    )
   }
 
   async function analyze() {
@@ -151,6 +170,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
       id: docId,
       title: title || result.title,
       category,
+      note: note.trim() || undefined,
       text: result.text,
       summary: result.summary,
       image,
@@ -202,7 +222,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
   }
 
   return (
-    <Modal open={open} onClose={close} title="書類をスキャン">
+    <Modal open={open} onClose={close} title="書類を登録">
       {/* ファイル入力は常時マウント（confirm画面の「追加」からも使うため） */}
       <input
         ref={fileRef}
@@ -228,6 +248,10 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
             <span className="font-bold">写真・PDFを選ぶ（複数可）</span>
             <span className="text-xs text-brand-500">学校のプリント・ゴミの日・レシピ・PDF配布物など</span>
           </button>
+          <Button className="mt-3 w-full" variant="soft" onClick={startSimple}>
+            <DocIcon width={18} height={18} /> AIを使わずメモで登録
+          </Button>
+          <p className="mt-1 text-center text-xs text-slate-400">写真なしでも、タイトル・カテゴリ・メモだけで保存できます。</p>
           {error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
           {!aiSettings.geminiApiKey && (
             <p className="mt-3 text-center text-xs text-slate-400">
@@ -306,13 +330,26 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
             />
           </Field>
           {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
-          <div className="flex gap-2">
-            <Button variant="ghost" className="flex-1" onClick={reset}>
-              戻る
+          <div className="space-y-2">
+            <Button
+              variant="soft"
+              className="w-full"
+              disabled={!images.length || images.some(isPdfDataUrl)}
+              onClick={startSimple}
+            >
+              <DocIcon width={18} height={18} /> AIを使わずメモで登録
             </Button>
-            <Button className="flex-[2]" disabled={!images.length} onClick={analyze}>
-              <SparkleIcon width={18} height={18} /> AIで解析
-            </Button>
+            {images.some(isPdfDataUrl) && (
+              <p className="text-center text-xs text-slate-400">PDFの保存にはAI解析が必要です。</p>
+            )}
+            <div className="flex gap-2">
+              <Button variant="ghost" className="flex-1" onClick={reset}>
+                戻る
+              </Button>
+              <Button className="flex-[2]" disabled={!images.length} onClick={analyze}>
+                <SparkleIcon width={18} height={18} /> AIで解析
+              </Button>
+            </div>
           </div>
           {!aiSettings.geminiApiKey && (
             <p className="text-center text-xs text-slate-400">※ APIキー未設定のためデモ解析になります（指示は反映されません）。</p>
@@ -349,6 +386,11 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
               )}
             </div>
           )}
+          {isSimple && (
+            <p className="rounded-lg bg-brand-50 px-3 py-2 text-xs text-brand-700">
+              AI解析を行わず、そのまま書類として保存します。
+            </p>
+          )}
           {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
           <div className="flex gap-3">
             {images.find((x) => !isPdfDataUrl(x)) && (
@@ -379,10 +421,21 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
             </div>
           </div>
 
-          <div className="rounded-xl bg-slate-50 p-3">
-            <p className="text-xs font-bold text-slate-400">{isManual ? '内容' : 'AI要約'}</p>
-            <p className="mt-1 text-sm text-slate-700">{result.summary}</p>
-          </div>
+          <Field label="メモ" hint="登録後も書類の詳細画面から編集できます。">
+            <textarea
+              className={`${inputClass} min-h-24`}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="提出場所、保管期限、家族への伝言など"
+            />
+          </Field>
+
+          {result.summary && (
+            <div className="rounded-xl bg-slate-50 p-3">
+              <p className="text-xs font-bold text-slate-400">{isManual ? '内容' : 'AI要約'}</p>
+              <p className="mt-1 text-sm text-slate-700">{result.summary}</p>
+            </div>
+          )}
 
           {result.events.length > 0 && (
             <div>
@@ -446,7 +499,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
               やり直す
             </Button>
             <Button className="flex-[2]" onClick={save}>
-              <SparkleIcon width={18} height={18} /> 保存する
+              {isSimple ? <CheckIcon width={18} height={18} /> : <SparkleIcon width={18} height={18} />} 保存する
             </Button>
           </div>
         </div>

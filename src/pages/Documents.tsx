@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useStore } from '../lib/store'
-import { Card, Badge, EmptyState, Button, Modal, Spinner } from '../components/ui'
+import { Card, Badge, EmptyState, Button, Field, Modal, Spinner, inputClass } from '../components/ui'
 import { QrModal } from '../components/QrModal'
 import { ImageLightbox } from '../components/ImageLightbox'
 import { DOC_CATEGORIES, type DocCategory, type DocItem } from '../types'
@@ -25,11 +25,33 @@ export function Documents() {
   const active = (params.get('cat') as DocCategory | null) ?? 'all'
   const [qrDoc, setQrDoc] = useState<DocItem | null>(null)
   const [detail, setDetail] = useState<DocItem | null>(null)
+  const [detailNote, setDetailNote] = useState('')
   const [lightbox, setLightbox] = useState<string | null>(null)
   const [showOcr, setShowOcr] = useState(false)
   const [reanalyzing, setReanalyzing] = useState(false)
   const [reanalyzeMsg, setReanalyzeMsg] = useState('')
   const detailFileRef = useRef<HTMLInputElement>(null)
+
+  function openDetail(doc: DocItem) {
+    setDetail(doc)
+    setDetailNote(doc.note ?? '')
+  }
+
+  function saveDetailNote() {
+    if (!detail) return
+    const note = detailNote.trim()
+    if ((detail.note ?? '') === note) return
+    const patch = { note: note || undefined }
+    updateDoc(detail.id, patch)
+    setDetail({ ...detail, ...patch })
+  }
+
+  function closeDetail() {
+    saveDetailNote()
+    setDetail(null)
+    setReanalyzeMsg('')
+    setShowOcr(false)
+  }
 
   /** 詳細の画像リスト（images優先・無ければimage1枚） */
   function detailImages(d: DocItem): string[] {
@@ -227,7 +249,7 @@ export function Documents() {
         <EmptyState
           icon={<DocIcon width={40} height={40} />}
           title="書類がありません"
-          desc="下の ＋ ボタン →「書類をスキャン」から、プリントを撮影/選択して取り込みましょう。"
+          desc="下の ＋ ボタン →「書類を登録」から、写真またはメモで取り込みましょう。"
         />
       ) : (
         <div className="space-y-2.5">
@@ -236,7 +258,7 @@ export function Documents() {
             return (
               <Card key={d.id} className="overflow-hidden">
                 <div className="flex">
-                  <button onClick={() => setDetail(d)} className="flex flex-1 gap-3 p-3 text-left">
+                  <button onClick={() => openDetail(d)} className="flex flex-1 gap-3 p-3 text-left">
                     {d.image ? (
                       <img src={d.image} alt="" className="h-20 w-16 shrink-0 rounded-lg object-cover ring-1 ring-slate-200" />
                     ) : (
@@ -252,7 +274,7 @@ export function Documents() {
                         <span className="text-[11px] text-slate-400">{formatJpDate(new Date(d.createdAt).toISOString().slice(0, 10))}</span>
                       </div>
                       <p className="truncate font-bold text-slate-800">{d.title}</p>
-                      <p className="line-clamp-2 text-xs text-slate-400">{d.summary}</p>
+                      <p className="line-clamp-2 text-xs text-slate-400">{d.note || d.summary || 'メモなし'}</p>
                     </div>
                   </button>
                 </div>
@@ -283,7 +305,7 @@ export function Documents() {
 
       <QrModal doc={qrDoc} onClose={() => setQrDoc(null)} />
 
-      <Modal open={!!detail} onClose={() => { setDetail(null); setReanalyzeMsg(''); setShowOcr(false) }} title={detail?.title}>
+      <Modal open={!!detail} onClose={closeDetail} title={detail?.title}>
         {detail && (
           <div className="space-y-3">
             <input
@@ -361,10 +383,22 @@ export function Documents() {
               )
             })()}
 
-            <div className="rounded-xl bg-slate-50 p-3">
-              <p className="text-xs font-bold text-slate-400">要約</p>
-              <p className="mt-1 text-sm text-slate-700">{detail.summary}</p>
-            </div>
+            <Field label="メモ" hint="変更はこの欄を離れた時に保存されます。">
+              <textarea
+                className={`${inputClass} min-h-24`}
+                value={detailNote}
+                onChange={(e) => setDetailNote(e.target.value)}
+                onBlur={saveDetailNote}
+                placeholder="この書類についてのメモ"
+              />
+            </Field>
+
+            {detail.summary && (
+              <div className="rounded-xl bg-slate-50 p-3">
+                <p className="text-xs font-bold text-slate-400">要約</p>
+                <p className="mt-1 text-sm text-slate-700">{detail.summary}</p>
+              </div>
+            )}
 
             {detectedEvents.length > 0 && (
               <div>
@@ -429,7 +463,12 @@ export function Documents() {
               </div>
             )}
 
-            <Button className="w-full" onClick={() => { setQrDoc(detail); setDetail(null) }}>
+            <Button className="w-full" onClick={() => {
+              const note = detailNote.trim()
+              if ((detail.note ?? '') !== note) updateDoc(detail.id, { note: note || undefined })
+              setQrDoc({ ...detail, note: note || undefined })
+              setDetail(null)
+            }}>
               <QrIcon width={18} height={18} /> 冷蔵庫に貼るQRを発行
             </Button>
           </div>

@@ -79,7 +79,7 @@ export function Layout() {
   const updateAvailable = useUpdateAvailable()
 
   const addActions: { label: string; desc: string; Icon: typeof HomeIcon; run: () => void }[] = [
-    { label: '書類をスキャン', desc: '写真/貼り付けで取り込み', Icon: CameraIcon, run: () => setScanOpen(true) },
+    { label: '書類を登録', desc: '写真・メモから取り込み', Icon: CameraIcon, run: () => setScanOpen(true) },
     { label: '予定を追加', desc: 'カレンダーに新規予定', Icon: CalendarIcon, run: () => navigate('/calendar?add=1') },
     { label: '買い物に追加', desc: '買い物リストへ', Icon: CartIcon, run: () => navigate('/shopping') },
     { label: '冷蔵庫を撮影', desc: '中身を登録', Icon: MealIcon, run: () => navigate('/meals') },
