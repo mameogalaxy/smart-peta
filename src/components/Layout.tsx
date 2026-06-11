@@ -67,8 +67,8 @@ export function Layout() {
 
   return (
     <div className="mx-auto flex min-h-full max-w-lg flex-col bg-slate-100">
-      {/* ヘッダー */}
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
+      {/* ヘッダー（iOSのPWAでfixed+backdrop-filterが崩れるため不透明背景にする） */}
+      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white">
         <div className="flex items-center justify-between px-4 py-3">
           <NavLink to="/" className="flex items-center gap-2">
             <img src={ICON_SRC} alt="" className="h-9 w-9" />
@@ -137,8 +137,8 @@ export function Layout() {
       <ScanSheet open={scanOpen} onClose={() => setScanOpen(false)} />
       <OnboardingGate />
 
-      {/* ボトムナビ */}
-      <nav className="safe-bottom fixed inset-x-0 bottom-0 z-30 mx-auto max-w-lg border-t border-slate-200 bg-white/95 backdrop-blur">
+      {/* ボトムナビ（iOSのPWAでfixed+backdrop-filterが画面中央にずれるため不透明背景にする） */}
+      <nav className="safe-bottom fixed inset-x-0 bottom-0 z-30 mx-auto max-w-lg border-t border-slate-200 bg-white">
         <div className="flex">
           {NAV.map((n) => (
             <NavItem key={n.to} {...n} />
