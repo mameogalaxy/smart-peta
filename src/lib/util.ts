@@ -30,6 +30,52 @@ export async function fileToScanData(file: File): Promise<string> {
   return downscaleImage(raw).catch(() => raw)
 }
 
+/** dataURL を File に変換（保存・共有用）。PDFや不正値は null。 */
+export function dataUrlToFile(dataUrl: string, name: string): File | null {
+  const m = /^data:([^;]+);base64,(.*)$/.exec(dataUrl)
+  if (!m) return null
+  const bin = atob(m[2])
+  const arr = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i)
+  return new File([arr], name, { type: m[1] })
+}
+
+/**
+ * 画像を端末に保存する。
+ * - 可能ならOSの共有シート（iOSの「画像を保存」でカメラロールへ）を使う。
+ * - 非対応ならファイルとしてダウンロード。
+ * 返り値: 共有/保存を試みたら true。
+ */
+export async function saveImagesToDevice(images: string[], prefix = 'smartpita'): Promise<boolean> {
+  const files: File[] = []
+  images.forEach((src, i) => {
+    if (src.startsWith('data:application/pdf')) return
+    const f = dataUrlToFile(src, `${prefix}-${i + 1}.jpg`)
+    if (f) files.push(f)
+  })
+  if (!files.length) return false
+  const nav = navigator as Navigator & { canShare?: (d: unknown) => boolean }
+  if (typeof nav.canShare === 'function' && nav.canShare({ files }) && navigator.share) {
+    try {
+      await navigator.share({ files })
+      return true
+    } catch {
+      // キャンセル/失敗 → ダウンロードにフォールバック
+    }
+  }
+  for (const f of files) {
+    const url = URL.createObjectURL(f)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = f.name
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 10000)
+  }
+  return true
+}
+
 /** dataURL から base64 部分と mime を取り出す */
 export function splitDataUrl(dataUrl: string): { mime: string; base64: string } {
   const match = /^data:([^;]+);base64,(.*)$/.exec(dataUrl)

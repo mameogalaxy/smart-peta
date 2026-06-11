@@ -22,11 +22,13 @@ export function Calendar() {
   const [photoMsg, setPhotoMsg] = useState('')
   const [pendingImage, setPendingImage] = useState<string | null>(null)
   const [photoInstruction, setPhotoInstruction] = useState('')
+  const [photoAssignee, setPhotoAssignee] = useState('')
 
   async function onPhotoEvents(file: File) {
     setPhotoMsg('')
     const small = await fileToScanData(file)
     setPhotoInstruction('')
+    setPhotoAssignee(filterMember === 'all' ? '' : filterMember)
     setPendingImage(small)
   }
 
@@ -34,6 +36,7 @@ export function Calendar() {
     if (!pendingImage) return
     const img = pendingImage
     const instruction = photoInstruction.trim() || undefined
+    const assignee = photoAssignee || undefined
     setPendingImage(null)
     setScanningPhoto(true)
     setPhotoMsg('')
@@ -54,6 +57,7 @@ export function Calendar() {
         time: ev.time,
         note: ev.note,
         category: res.category,
+        assignee,
         remind: true,
         remindMinutes: 10,
         done: false,
@@ -334,6 +338,31 @@ export function Calendar() {
               </div>
             ) : (
               <img src={pendingImage} alt="" className="mx-auto max-h-52 rounded-xl object-contain" />
+            )}
+            {state.family.length > 0 && (
+              <div>
+                <span className="mb-1 block text-sm font-semibold text-slate-600">担当（任意）</span>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setPhotoAssignee('')}
+                    className={`rounded-full px-3 py-1.5 text-sm font-semibold ${photoAssignee === '' ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-500'}`}
+                  >
+                    家族全員
+                  </button>
+                  {state.family.map((f) => {
+                    const isSelf = f.id === state.settings.memberId
+                    return (
+                      <button
+                        key={f.id}
+                        onClick={() => setPhotoAssignee(f.id)}
+                        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold ${photoAssignee === f.id ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-500'}`}
+                      >
+                        <Avatar member={f} size={18} /> {isSelf ? `${f.name}(自分)` : f.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
             )}
             <Field label="AIへの指示（任意）" hint="例: 提出期限だけ / 来週分だけ / 時間も入れて。空欄でもOK。">
               <textarea

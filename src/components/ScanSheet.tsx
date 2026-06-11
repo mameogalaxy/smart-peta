@@ -5,7 +5,7 @@ import { useStore } from '../lib/store'
 import { scanDocument, analyzeDocumentText, GeminiError, type ScanResult } from '../lib/gemini'
 import { demoScan } from '../lib/demo'
 import { classifyByKeywords, extractDates } from '../lib/classify'
-import { fileToScanData, isPdfDataUrl, todayISO, uid, formatJpDate } from '../lib/util'
+import { fileToScanData, isPdfDataUrl, saveImagesToDevice, todayISO, uid, formatJpDate } from '../lib/util'
 import { DOC_CATEGORIES, type DocCategory } from '../types'
 import { CategoryIcon } from './CategoryIcon'
 import { DocIcon } from './icons'
@@ -16,6 +16,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
   const store = useStore()
   const aiSettings = store.aiSettings
   const fileRef = useRef<HTMLInputElement>(null)
+  const [saveToPhotos, setSaveToPhotos] = useState(store.state.settings.saveScansToPhotos ?? false)
 
   const [phase, setPhase] = useState<Phase>('pick')
   const [images, setImages] = useState<string[]>([])
@@ -135,13 +136,17 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
     }
   }
 
-  function save() {
+  async function save() {
     if (!result) return
     const now = Date.now()
     const docId = uid()
     // 画像（PDFは表示できないため除外）。複数枚は全部保存してスライド表示。代表＝先頭。
     const imgs = images.filter((x) => !isPdfDataUrl(x))
     const image = imgs[0] ?? ''
+    // 端末（写真フォルダ）にも保存（保存ボタンのタップ操作中に共有シートを出す）
+    if (saveToPhotos && imgs.length) {
+      await saveImagesToDevice(imgs, 'smartpita-doc').catch(() => {})
+    }
     store.addDoc({
       id: docId,
       title: title || result.title,
@@ -280,6 +285,18 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
             </button>
           </div>
           <p className="text-xs text-slate-400">{images.length}件を1つの書類としてまとめて読み取ります（PDFはページごと自動で読み取り）。</p>
+          <label className="flex items-center gap-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              checked={saveToPhotos}
+              onChange={(e) => {
+                setSaveToPhotos(e.target.checked)
+                store.updateSettings({ saveScansToPhotos: e.target.checked })
+              }}
+              className="h-5 w-5 accent-brand-500"
+            />
+            撮影した写真を端末（写真フォルダ）にも保存する
+          </label>
           <Field label="AIへの指示（任意）" hint="例: 提出期限だけ拾って / 材料を英語で / ゴミの分別を箇条書きで。空欄でもOK。">
             <textarea
               className={`${inputClass} min-h-20`}

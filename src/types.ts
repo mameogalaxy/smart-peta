@@ -142,6 +142,8 @@ export interface Settings {
   memberId?: string
   /** APIキー・モデルを世帯（家族）に共有して、家族も使えるようにする */
   shareAiWithFamily?: boolean
+  /** スキャンした写真を端末（写真フォルダ）にも保存する */
+  saveScansToPhotos?: boolean
 }
 
 export interface AppState {
