@@ -20,6 +20,7 @@ export function Calendar() {
   const { state, aiSettings, addEvents, updateEvent, removeEvent } = useStore()
   const today = todayISO()
   const photoRef = useRef<HTMLInputElement>(null)
+  const jumpRef = useRef<HTMLInputElement>(null)
   const [scanningPhoto, setScanningPhoto] = useState(false)
   const [photoMsg, setPhotoMsg] = useState('')
   const [pendingImage, setPendingImage] = useState<string | null>(null)
@@ -158,6 +159,21 @@ export function Calendar() {
     })
   }
 
+  /** ヘッダーの年月をタップ → 日付ピッカーで任意の月へジャンプ */
+  function openJump() {
+    const el = jumpRef.current as (HTMLInputElement & { showPicker?: () => void }) | null
+    if (!el) return
+    if (typeof el.showPicker === 'function') {
+      try {
+        el.showPicker()
+        return
+      } catch {
+        /* 非対応はクリックにフォールバック */
+      }
+    }
+    el.click()
+  }
+
   async function shareSchedule() {
     const t = todayISO()
     const list = [...state.events]
@@ -187,8 +203,37 @@ export function Calendar() {
       <Card className="p-3">
         <div className="mb-2 flex items-center justify-between px-1">
           <button onClick={() => shift(-1)} className="rounded-lg px-3 py-1 text-slate-400 active:bg-slate-100">‹</button>
-          <div className="font-extrabold text-slate-800">
-            {cursor.y}年 {cursor.m + 1}月
+          <div className="relative flex items-center gap-2">
+            <button onClick={openJump} className="font-extrabold text-slate-800 active:opacity-70" aria-label="日付を指定して移動">
+              {cursor.y}年 {cursor.m + 1}月 ▾
+            </button>
+            {(cursor.y !== new Date().getFullYear() || cursor.m !== new Date().getMonth()) && (
+              <button
+                onClick={() => {
+                  const now = new Date()
+                  setCursor({ y: now.getFullYear(), m: now.getMonth() })
+                  setSelected(today)
+                }}
+                className="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-bold text-brand-600 active:bg-brand-100"
+              >
+                今日
+              </button>
+            )}
+            <input
+              ref={jumpRef}
+              type="date"
+              value={selected}
+              onChange={(e) => {
+                const d = parseISO(e.target.value)
+                if (d) {
+                  setCursor({ y: d.getFullYear(), m: d.getMonth() })
+                  setSelected(e.target.value)
+                }
+              }}
+              className="pointer-events-none absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 opacity-0"
+              tabIndex={-1}
+              aria-hidden
+            />
           </div>
           <button onClick={() => shift(1)} className="rounded-lg px-3 py-1 text-slate-400 active:bg-slate-100">›</button>
         </div>
