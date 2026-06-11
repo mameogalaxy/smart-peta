@@ -110,16 +110,18 @@ export function Documents() {
   }
 
   const [printing, setPrinting] = useState(false)
-  async function printSheet() {
-    if (!docs.length || printing) return
+  const [printPicker, setPrintPicker] = useState(false)
+  const [printSel, setPrintSel] = useState<Set<string>>(new Set())
+  const appUrl = (state.settings.shareBaseUrl || window.location.origin + window.location.pathname).replace(/[?#].*$/, '')
+
+  async function doPrint(items: { title: string; url: string; color: string; label: string }[]) {
+    if (!items.length || printing) return
     setPrinting(true)
     try {
       const cards = await Promise.all(
-        docs.map(async (d) => {
-          const url = docShareUrl(state.settings.shareBaseUrl, d.id)
-          const qr = await makeQrDataUrl(url, 320)
-          const cat = DOC_CATEGORIES.find((c) => c.id === d.category)
-          return { title: d.title, qr, color: cat?.color || '#3b82f6', label: cat?.label || '' }
+        items.map(async (it) => {
+          const qr = await makeQrDataUrl(it.url, 320)
+          return { title: it.title, qr, color: it.color, label: it.label }
         }),
       )
       const cardHtml = cards
@@ -165,6 +167,38 @@ export function Documents() {
     else setParams({ cat })
   }
 
+  // 印刷できるQR一覧（アプリ・予定・各書類）
+  const printItems = useMemo(() => {
+    const items: { id: string; title: string; url: string; color: string; label: string }[] = [
+      { id: 'app', title: `${state.settings.householdName}の掲示板`, url: appUrl, color: '#3b82f6', label: 'アプリ' },
+      { id: 'schedule', title: `${state.settings.householdName}の予定`, url: `${appUrl}#/calendar`, color: '#6366f1', label: '予定' },
+    ]
+    for (const d of docs) {
+      const cat = DOC_CATEGORIES.find((c) => c.id === d.category)
+      items.push({
+        id: `doc:${d.id}`,
+        title: d.title,
+        url: docShareUrl(state.settings.shareBaseUrl, d.id),
+        color: cat?.color || '#3b82f6',
+        label: cat?.label || '書類',
+      })
+    }
+    return items
+  }, [docs, state.settings.householdName, state.settings.shareBaseUrl, appUrl])
+
+  function openPrintPicker() {
+    setPrintSel(new Set(printItems.map((i) => i.id)))
+    setPrintPicker(true)
+  }
+  function togglePrint(id: string) {
+    setPrintSel((prev) => {
+      const n = new Set(prev)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  }
+
   return (
     <div className="space-y-4">
       {/* カテゴリタブ */}
@@ -182,14 +216,12 @@ export function Documents() {
         ))}
       </div>
 
-      {docs.length > 0 && (
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-slate-400">{docs.length}件</span>
-          <Button variant="soft" onClick={printSheet} disabled={printing}>
-            <PrinterIcon width={16} height={16} /> {printing ? '準備中…' : 'QRをまとめて印刷'}
-          </Button>
-        </div>
-      )}
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-slate-400">{docs.length}件</span>
+        <Button variant="soft" onClick={openPrintPicker} disabled={printing}>
+          <PrinterIcon width={16} height={16} /> {printing ? '準備中…' : 'QRをまとめて印刷'}
+        </Button>
+      </div>
 
       {docs.length === 0 ? (
         <EmptyState
@@ -405,6 +437,53 @@ export function Documents() {
       </Modal>
 
       <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />
+
+      <Modal open={printPicker} onClose={() => setPrintPicker(false)} title="まとめて印刷するQRを選ぶ">
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <Button variant="soft" onClick={() => setPrintSel(new Set(printItems.map((i) => i.id)))}>
+              全て選択
+            </Button>
+            <Button variant="ghost" onClick={() => setPrintSel(new Set())}>
+              全て解除
+            </Button>
+          </div>
+          <div className="max-h-[50vh] space-y-1.5 overflow-y-auto">
+            {printItems.map((it) => {
+              const on = printSel.has(it.id)
+              return (
+                <label
+                  key={it.id}
+                  className={`flex items-center gap-3 rounded-xl border p-2.5 ${on ? 'border-brand-300 bg-brand-50/50' : 'border-slate-200'}`}
+                >
+                  <input type="checkbox" checked={on} onChange={() => togglePrint(it.id)} className="h-5 w-5 accent-brand-500" />
+                  <span
+                    className="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-bold"
+                    style={{ color: it.color, backgroundColor: `${it.color}1a` }}
+                  >
+                    {it.label}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700">{it.title}</span>
+                </label>
+              )
+            })}
+          </div>
+          <Button
+            className="w-full"
+            disabled={printSel.size === 0 || printing}
+            onClick={() => {
+              const sel = printItems.filter((i) => printSel.has(i.id))
+              setPrintPicker(false)
+              void doPrint(sel)
+            }}
+          >
+            <PrinterIcon width={18} height={18} /> {printing ? '準備中…' : `${printSel.size}件をA4に印刷`}
+          </Button>
+          <p className="text-[11px] text-slate-400">
+            選んだQRをA4に2列で並べて印刷します（1枚に約42mm角のQR）。冷蔵庫に貼って家族みんなで読み取れます。
+          </p>
+        </div>
+      </Modal>
     </div>
   )
 }
