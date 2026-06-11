@@ -11,6 +11,7 @@ import {
 import type {
   AppState,
   CalendarEvent,
+  DocCategoryDefinition,
   DocItem,
   FamilyMember,
   InventoryItem,
@@ -19,6 +20,7 @@ import type {
   Settings,
   ShoppingItem,
 } from '../types'
+import { DOC_CATEGORIES } from '../types'
 import { seedFamily } from './demo'
 import { uid, compressForShare } from './util'
 import {
@@ -43,7 +45,7 @@ function resolveConfig(raw?: string): Record<string, unknown> | null {
 }
 
 /** クラウド同期する配列コレクション（画像は docs から除外して送る） */
-const SYNCED = ['docs', 'events', 'shopping', 'recipes', 'meals', 'inventory', 'family'] as const
+const SYNCED = ['docs', 'customDocCategories', 'hiddenDocCategoryIds', 'events', 'shopping', 'recipes', 'meals', 'inventory', 'family'] as const
 type SyncedKey = (typeof SYNCED)[number]
 
 export type CloudStatus = 'off' | 'connecting' | 'on' | 'error'
@@ -92,6 +94,8 @@ const defaultSettings: Settings = {
 function initialState(): AppState {
   return {
     docs: [],
+    customDocCategories: [],
+    hiddenDocCategoryIds: [],
     events: [],
     recipes: [],
     shopping: [],
@@ -117,6 +121,8 @@ function load(): AppState {
       ...base,
       ...parsed,
       inventory: parsed.inventory ?? [],
+      customDocCategories: parsed.customDocCategories ?? [],
+      hiddenDocCategoryIds: parsed.hiddenDocCategoryIds ?? [],
       settings,
       family: parsed.family?.length ? parsed.family : base.family,
     }
@@ -131,6 +137,9 @@ interface StoreApi {
   addDoc: (doc: DocItem) => void
   updateDoc: (id: string, patch: Partial<DocItem>) => void
   removeDoc: (id: string) => void
+  addDocCategory: (label: string, color: string) => void
+  removeDocCategory: (id: string) => void
+  restoreDocCategory: (id: string) => void
   // 予定
   addEvent: (e: CalendarEvent) => void
   addEvents: (es: CalendarEvent[]) => void
@@ -221,6 +230,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           return { ...s, docs: [...byId.values()] }
         }
         return { ...s, docs: remote }
+      }
+      if (col === 'hiddenDocCategoryIds') {
+        const remote = items.filter((x): x is string => typeof x === 'string')
+        return { ...s, hiddenDocCategoryIds: doMerge ? [...new Set([...remote, ...s.hiddenDocCategoryIds])] : remote }
       }
       if (doMerge) {
         const arr = items as { id?: string }[]
@@ -400,7 +413,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setDoc(fsDoc(getDb(), 'households', hid, 'data', col), { items: JSON.parse(ser) }).catch(() => {})
       }
     }
-  }, [cloud.status, hid, state.docs, state.events, state.shopping, state.recipes, state.meals, state.inventory, state.family])
+  }, [cloud.status, hid, state.docs, state.customDocCategories, state.hiddenDocCategoryIds, state.events, state.shopping, state.recipes, state.meals, state.inventory, state.family])
 
   // 自分(この端末の利用者)を家族リストに常に存在させる（同期で消えても再登録）
   useEffect(() => {
@@ -450,6 +463,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           docs: s.docs.filter((d) => d.id !== id),
           events: s.events.filter((e) => e.docId !== id),
         })),
+      addDocCategory: (label, color) =>
+        patch((s) => {
+          const name = label.trim()
+          if (!name || [...DOC_CATEGORIES, ...s.customDocCategories].some((c) => c.label.toLowerCase() === name.toLowerCase())) return s
+          return {
+            ...s,
+            customDocCategories: [
+              ...s.customDocCategories,
+              { id: `custom-${uid()}`, label: name, color, custom: true } as DocCategoryDefinition,
+            ],
+          }
+        }),
+      removeDocCategory: (id) =>
+        patch((s) => ({
+          ...s,
+          customDocCategories: s.customDocCategories.filter((c) => c.id !== id),
+          hiddenDocCategoryIds: s.customDocCategories.some((c) => c.id === id)
+            ? s.hiddenDocCategoryIds
+            : [...new Set([...s.hiddenDocCategoryIds, id])],
+          docs: s.docs.map((d) => (d.category === id ? { ...d, category: 'other' } : d)),
+          events: s.events.map((e) => (e.category === id ? { ...e, category: 'other' } : e)),
+        })),
+      restoreDocCategory: (id) =>
+        patch((s) => ({ ...s, hiddenDocCategoryIds: s.hiddenDocCategoryIds.filter((x) => x !== id) })),
       addEvent: (e) => patch((s) => ({ ...s, events: [...s.events, e] })),
       addEvents: (es) => patch((s) => ({ ...s, events: [...s.events, ...es] })),
       updateEvent: (id, p) =>
@@ -515,7 +552,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }),
       removeInventory: (id) => patch((s) => ({ ...s, inventory: s.inventory.filter((i) => i.id !== id) })),
       clearInventory: () => patch((s) => ({ ...s, inventory: [] })),
-      setFamily: (f) => patch((s) => ({ ...s, family: f })),
+      setFamily: (f) =>
+        patch((s) => {
+          const ids = new Set(f.map((member) => member.id))
+          return {
+            ...s,
+            family: f,
+            docs: s.docs.map((doc) => {
+              const audienceIds = doc.audienceIds?.filter((id) => ids.has(id)) ?? []
+              return { ...doc, audienceIds: audienceIds.length ? audienceIds : undefined }
+            }),
+          }
+        }),
       updateSettings: (p) => patch((s) => ({ ...s, settings: { ...s.settings, ...p } })),
       resetAll: () => {
         localStorage.removeItem(STORAGE_KEY)

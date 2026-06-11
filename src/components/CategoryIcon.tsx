@@ -2,7 +2,7 @@ import type { SVGProps } from 'react'
 import type { DocCategory } from '../types'
 import { BoltIcon, BookIcon, BriefcaseIcon, DocIcon, MealIcon, SchoolIcon, TrashIcon } from './icons'
 
-const MAP: Record<DocCategory, (p: SVGProps<SVGSVGElement>) => React.JSX.Element> = {
+const MAP: Partial<Record<DocCategory, (p: SVGProps<SVGSVGElement>) => React.JSX.Element>> = {
   school: SchoolIcon,
   garbage: TrashIcon,
   recipe: MealIcon,
@@ -22,6 +22,6 @@ export function CategoryIcon({
   size?: number
   className?: string
 }) {
-  const Icon = MAP[cat]
+  const Icon = MAP[cat] ?? DocIcon
   return <Icon width={size} height={size} className={className} />
 }

@@ -4,7 +4,7 @@ import { makeBrandedQrDataUrl, makeQrDataUrl, docShareUrl } from '../lib/qr'
 import { useStore } from '../lib/store'
 import { saveImagesToDevice } from '../lib/util'
 import type { DocCategory, DocItem } from '../types'
-import { DOC_CATEGORIES } from '../types'
+import { findDocCategory } from '../types'
 import { PrinterIcon, CopyIcon, QrIcon } from './icons'
 
 function escapeHtml(s: string): string {
@@ -55,7 +55,7 @@ export function QrModal({
     if (!url || !target) return
     setImg('')
     setCopied(false)
-    const titleColor = target.category ? DOC_CATEGORIES.find((c) => c.id === target.category)?.color : undefined
+    const titleColor = target.category ? findDocCategory(target.category, state.customDocCategories, state.hiddenDocCategoryIds).color : undefined
     makeBrandedQrDataUrl(url, { title: target.title, titleColor })
       .then(setImg)
       .catch(() => makeQrDataUrl(url, 480).then(setImg).catch(() => setImg('')))

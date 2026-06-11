@@ -1,9 +1,16 @@
 // ---- ドメインの型定義 ----
 
 /** 書類の自動分類カテゴリ */
-export type DocCategory = 'school' | 'garbage' | 'recipe' | 'utility' | 'manual' | 'work' | 'other'
+export type DocCategory = string
 
-export const DOC_CATEGORIES: { id: DocCategory; label: string; color: string }[] = [
+export interface DocCategoryDefinition {
+  id: DocCategory
+  label: string
+  color: string
+  custom?: boolean
+}
+
+export const DOC_CATEGORIES: DocCategoryDefinition[] = [
   { id: 'school', label: '学校', color: '#f59e0b' },
   { id: 'garbage', label: 'ゴミの日', color: '#10b981' },
   { id: 'recipe', label: 'レシピ', color: '#ef4444' },
@@ -13,6 +20,16 @@ export const DOC_CATEGORIES: { id: DocCategory; label: string; color: string }[]
   { id: 'other', label: 'その他', color: '#6366f1' },
 ]
 
+export function allDocCategories(custom: DocCategoryDefinition[] = [], hiddenIds: string[] = []): DocCategoryDefinition[] {
+  const builtInIds = new Set(DOC_CATEGORIES.map((c) => c.id))
+  const hidden = new Set(hiddenIds)
+  return [...DOC_CATEGORIES, ...custom.filter((c) => !builtInIds.has(c.id))].filter((c) => c.id === 'other' || !hidden.has(c.id))
+}
+
+export function findDocCategory(id: DocCategory, custom: DocCategoryDefinition[] = [], hiddenIds: string[] = []): DocCategoryDefinition {
+  return allDocCategories(custom, hiddenIds).find((c) => c.id === id) ?? DOC_CATEGORIES.find((c) => c.id === 'other')!
+}
+
 /** スキャンして取り込んだ書類 */
 export interface DocItem {
   id: string
@@ -20,6 +37,8 @@ export interface DocItem {
   category: DocCategory
   /** 利用者が入力・編集するメモ */
   note?: string
+  /** 対象の家族メンバーID。未設定/空配列は家族全員 */
+  audienceIds?: string[]
   /** AIが抽出した本文テキスト（OCR） */
   text: string
   /** AIの要約 */
@@ -156,6 +175,10 @@ export interface Settings {
 
 export interface AppState {
   docs: DocItem[]
+  /** 家族で共有する追加書類カテゴリ */
+  customDocCategories: DocCategoryDefinition[]
+  /** 使用しない標準書類カテゴリID */
+  hiddenDocCategoryIds: string[]
   events: CalendarEvent[]
   recipes: Recipe[]
   shopping: ShoppingItem[]

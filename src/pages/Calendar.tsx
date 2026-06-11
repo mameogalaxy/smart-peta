@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useStore } from '../lib/store'
 import { Card, Badge, Button, Modal, Field, inputClass, EmptyState, Spinner } from '../components/ui'
-import { DOC_CATEGORIES, type CalendarEvent, type DocCategory, type FamilyMember } from '../types'
+import { allDocCategories, findDocCategory, type CalendarEvent, type DocCategory, type DocCategoryDefinition, type FamilyMember } from '../types'
 import { fileToScanData, isPdfDataUrl, formatJpDate, parseISO, relativeDays, todayISO, uid } from '../lib/util'
 import { type Repeat, REPEATS, buildRepeatDates } from '../lib/recurrence'
 import { CalendarIcon, CameraIcon, CheckIcon, PlusIcon, TrashIcon, ShareIcon, QrIcon } from '../components/icons'
@@ -90,13 +90,14 @@ export function Calendar() {
   const [view, setView] = useState<'day' | 'month'>('day')
   const [scheduleQr, setScheduleQr] = useState(false)
   const [params, setParams] = useSearchParams()
+  const categories = allDocCategories(state.customDocCategories, state.hiddenDocCategoryIds)
 
   // 担当メンバーの色（カレンダーの印・一覧の色分けに使用）
   const memberColors = useMemo(() => new Map(state.family.map((f) => [f.id, f.color])), [state.family])
   function eventColor(e: CalendarEvent): string {
     return (
       (e.assignee && memberColors.get(e.assignee)) ||
-      DOC_CATEGORIES.find((x) => x.id === e.category)?.color ||
+      findDocCategory(e.category, state.customDocCategories, state.hiddenDocCategoryIds).color ||
       '#3b82f6'
     )
   }
@@ -348,6 +349,7 @@ export function Calendar() {
                     <EventRow
                       key={e.id}
                       e={e}
+                      categories={categories}
                       member={state.family.find((f) => f.id === e.assignee)}
                       onToggleDone={() => updateEvent(e.id, { done: !e.done })}
                       onEdit={() => setEditEvent(e)}
@@ -370,6 +372,7 @@ export function Calendar() {
               <EventRow
                 key={e.id}
                 e={e}
+                categories={categories}
                 member={state.family.find((f) => f.id === e.assignee)}
                 onToggleDone={() => updateEvent(e.id, { done: !e.done })}
                 onEdit={() => setEditEvent(e)}
@@ -444,6 +447,7 @@ export function Calendar() {
         <AddEventModal
           date={selected}
           family={state.family}
+          categories={categories}
           defaultAssignee={filterMember === 'all' ? '' : filterMember}
           onClose={() => setAdding(false)}
           onSave={(events) => {
@@ -578,6 +582,7 @@ function AddToCalendarSheet({
 
 function EventRow({
   e,
+  categories,
   member,
   onToggleDone,
   onEdit,
@@ -585,13 +590,14 @@ function EventRow({
   onDelete,
 }: {
   e: CalendarEvent
+  categories: DocCategoryDefinition[]
   member?: FamilyMember
   onToggleDone: () => void
   onEdit: () => void
   onAddCalendar: () => void
   onDelete: () => void
 }) {
-  const cat = DOC_CATEGORIES.find((c) => c.id === e.category)
+  const cat = categories.find((c) => c.id === e.category)
   const accent = member?.color ?? cat?.color ?? '#3b82f6'
   return (
     <Card className="flex items-center gap-2 p-3">
@@ -634,12 +640,14 @@ function EventRow({
 function AddEventModal({
   date,
   family,
+  categories,
   defaultAssignee = '',
   onClose,
   onSave,
 }: {
   date: string
   family: FamilyMember[]
+  categories: DocCategoryDefinition[]
   defaultAssignee?: string
   onClose: () => void
   onSave: (events: CalendarEvent[]) => void
@@ -672,7 +680,7 @@ function AddEventModal({
         <div>
           <span className="mb-1 block text-sm font-semibold text-slate-600">分類</span>
           <div className="flex flex-wrap gap-2">
-            {DOC_CATEGORIES.map((c) => (
+            {categories.map((c) => (
               <button
                 key={c.id}
                 onClick={() => setCategory(c.id)}

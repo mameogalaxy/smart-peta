@@ -4,10 +4,10 @@ import { useStore } from '../lib/store'
 import { Card, Badge, EmptyState, Button, Field, Modal, Spinner, inputClass } from '../components/ui'
 import { QrModal } from '../components/QrModal'
 import { ImageLightbox } from '../components/ImageLightbox'
-import { DOC_CATEGORIES, type DocCategory, type DocItem } from '../types'
+import { allDocCategories, DOC_CATEGORIES, findDocCategory, type DocCategory, type DocItem } from '../types'
 import { formatJpDate, fileToDataUrl, downscaleImage, isPdfDataUrl, todayISO, uid } from '../lib/util'
 import { scanDocument, GeminiError } from '../lib/gemini'
-import { CameraIcon, CheckIcon, DocIcon, GridIcon, PlusIcon, PrinterIcon, QrIcon, SparkleIcon, TrashIcon } from '../components/icons'
+import { CameraIcon, CheckIcon, DocIcon, GridIcon, PlusIcon, PrinterIcon, QrIcon, SparkleIcon, TrashIcon, UsersIcon } from '../components/icons'
 import { CategoryIcon } from '../components/CategoryIcon'
 import { extractDates } from '../lib/classify'
 import { useConfirm } from '../lib/confirm'
@@ -16,26 +16,38 @@ import { printHtml, escapeHtml } from '../lib/print'
 import { ICON_SRC } from '../brand'
 import type { ReactNode } from 'react'
 import { renderPdfPages } from '../lib/pdf'
+import { DocumentAudiencePicker } from '../components/DocumentAudiencePicker'
+import { Avatar } from '../components/Avatar'
+
+const CATEGORY_COLORS = ['#6366f1', '#0ea5e9', '#14b8a6', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#8b5cf6', '#475569']
 
 export function Documents() {
   const store = useStore()
-  const { state, removeDoc, updateDoc, addEvent } = store
+  const { state, removeDoc, updateDoc, addEvent, addDocCategory, removeDocCategory, restoreDocCategory } = store
+  const categories = allDocCategories(state.customDocCategories, state.hiddenDocCategoryIds)
   const aiSettings = store.aiSettings
   const confirm = useConfirm()
   const [params, setParams] = useSearchParams()
   const active = (params.get('cat') as DocCategory | null) ?? 'all'
+  const audienceFilter = params.get('aud') ?? 'all'
   const [qrDoc, setQrDoc] = useState<DocItem | null>(null)
   const [detail, setDetail] = useState<DocItem | null>(null)
   const [detailNote, setDetailNote] = useState('')
+  const [detailAudienceIds, setDetailAudienceIds] = useState<string[]>([])
   const [lightbox, setLightbox] = useState<string | null>(null)
   const [showOcr, setShowOcr] = useState(false)
   const [reanalyzing, setReanalyzing] = useState(false)
   const [reanalyzeMsg, setReanalyzeMsg] = useState('')
   const detailFileRef = useRef<HTMLInputElement>(null)
+  const [categoryManagerOpen, setCategoryManagerOpen] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [newCategoryColor, setNewCategoryColor] = useState(CATEGORY_COLORS[0])
+  const categoryNameExists = categories.some((c) => c.label.toLowerCase() === newCategoryName.trim().toLowerCase())
 
   function openDetail(doc: DocItem) {
     setDetail(doc)
     setDetailNote(doc.note ?? '')
+    setDetailAudienceIds(doc.audienceIds ?? [])
   }
 
   function saveDetailNote() {
@@ -98,10 +110,17 @@ export function Documents() {
     setReanalyzing(true)
     setReanalyzeMsg('')
     try {
-      const res = await scanDocument(imgs, aiSettings, todayISO())
-      const patch = { title: res.title || detail.title, category: res.category, summary: res.summary, text: res.text }
+      const res = await scanDocument(imgs, aiSettings, todayISO(), undefined, categories, state.family)
+      const patch = {
+        title: res.title || detail.title,
+        category: res.category,
+        summary: res.summary,
+        text: res.text,
+        audienceIds: res.audienceIds?.length ? res.audienceIds : undefined,
+      }
       updateDoc(detail.id, patch)
       setDetail({ ...detail, ...patch })
+      setDetailAudienceIds(res.audienceIds ?? [])
       setReanalyzeMsg('AIで読み込み直しました。')
     } catch (e) {
       setReanalyzeMsg(
@@ -129,6 +148,7 @@ export function Documents() {
       time: ev.time,
       note: ev.note,
       category: detail.category,
+      assignee: detail.audienceIds?.length === 1 ? detail.audienceIds[0] : undefined,
       docId: detail.id,
       remind: true,
       remindMinutes: 10,
@@ -186,13 +206,24 @@ export function Documents() {
   }
 
   const docs = useMemo(() => {
-    const list = active === 'all' ? state.docs : state.docs.filter((d) => d.category === active)
+    let list = active === 'all' ? state.docs : state.docs.filter((d) => d.category === active)
+    if (audienceFilter === 'family') list = list.filter((d) => !d.audienceIds?.length)
+    else if (audienceFilter !== 'all') list = list.filter((d) => d.audienceIds?.includes(audienceFilter))
     return [...list].sort((a, b) => b.createdAt - a.createdAt)
-  }, [state.docs, active])
+  }, [state.docs, active, audienceFilter])
 
   function setCat(cat: string) {
-    if (cat === 'all') setParams({})
-    else setParams({ cat })
+    const next = new URLSearchParams(params)
+    if (cat === 'all') next.delete('cat')
+    else next.set('cat', cat)
+    setParams(next)
+  }
+
+  function setAudienceFilter(value: string) {
+    const next = new URLSearchParams(params)
+    if (value === 'all') next.delete('aud')
+    else next.set('aud', value)
+    setParams(next)
   }
 
   // 印刷できるQR一覧（アプリ・予定・各書類）
@@ -202,7 +233,7 @@ export function Documents() {
       { id: 'schedule', title: `${state.settings.householdName}の予定`, url: `${appUrl}#/calendar`, color: '#6366f1', label: '予定' },
     ]
     for (const d of docs) {
-      const cat = DOC_CATEGORIES.find((c) => c.id === d.category)
+      const cat = findDocCategory(d.category, state.customDocCategories, state.hiddenDocCategoryIds)
       items.push({
         id: `doc:${d.id}`,
         title: d.title,
@@ -232,7 +263,7 @@ export function Documents() {
       {/* カテゴリタブ */}
       <div className="flex gap-2 overflow-x-auto pb-1">
         <Chip active={active === 'all'} onClick={() => setCat('all')} label="すべて" icon={<GridIcon width={16} height={16} />} />
-        {DOC_CATEGORIES.map((c) => (
+        {categories.map((c) => (
           <Chip
             key={c.id}
             active={active === c.id}
@@ -240,6 +271,28 @@ export function Documents() {
             label={c.label}
             icon={<CategoryIcon cat={c.id} size={16} />}
             color={c.color}
+          />
+        ))}
+        <button
+          onClick={() => setCategoryManagerOpen(true)}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white px-3.5 py-1.5 text-sm font-semibold text-brand-600 ring-1 ring-brand-200"
+        >
+          <PlusIcon width={16} height={16} /> 分類
+        </button>
+      </div>
+
+      {/* 対象メンバー絞り込み */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        <Chip active={audienceFilter === 'all'} onClick={() => setAudienceFilter('all')} label="全件" icon={<GridIcon width={16} height={16} />} />
+        <Chip active={audienceFilter === 'family'} onClick={() => setAudienceFilter('family')} label="家族全員" icon={<UsersIcon width={16} height={16} />} />
+        {state.family.map((member) => (
+          <Chip
+            key={member.id}
+            active={audienceFilter === member.id}
+            onClick={() => setAudienceFilter(member.id)}
+            label={member.name}
+            icon={<Avatar member={member} size={16} />}
+            color={member.color}
           />
         ))}
       </div>
@@ -260,7 +313,10 @@ export function Documents() {
       ) : (
         <div className="space-y-2.5">
           {docs.map((d) => {
-            const cat = DOC_CATEGORIES.find((c) => c.id === d.category)
+            const cat = findDocCategory(d.category, state.customDocCategories, state.hiddenDocCategoryIds)
+            const audience = d.audienceIds?.length
+              ? state.family.filter((f) => d.audienceIds?.includes(f.id))
+              : []
             return (
               <Card key={d.id} className="overflow-hidden">
                 <div className="flex">
@@ -281,6 +337,16 @@ export function Documents() {
                       </div>
                       <p className="truncate font-bold text-slate-800">{d.title}</p>
                       <p className="line-clamp-2 text-xs text-slate-400">{d.note || d.summary || 'メモなし'}</p>
+                      <div className="mt-1 flex items-center gap-1 text-[11px] text-slate-400">
+                        {audience.length ? (
+                          <>
+                            {audience.slice(0, 3).map((member) => <Avatar key={member.id} member={member} size={16} />)}
+                            <span>{audience.map((member) => member.name).join('・')}</span>
+                          </>
+                        ) : (
+                          <><UsersIcon width={14} height={14} /> 家族全員</>
+                        )}
+                      </div>
                     </div>
                   </button>
                 </div>
@@ -389,6 +455,38 @@ export function Documents() {
               )
             })()}
 
+            <div>
+              <span className="mb-1 block text-sm font-semibold text-slate-600">分類</span>
+              <div className="flex flex-wrap gap-2">
+                {categories.map((category) => (
+                  <button
+                    key={category.id}
+                    onClick={() => {
+                      updateDoc(detail.id, { category: category.id })
+                      setDetail({ ...detail, category: category.id })
+                    }}
+                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold ${
+                      detail.category === category.id ? 'text-white' : 'bg-slate-100 text-slate-500'
+                    }`}
+                    style={detail.category === category.id ? { backgroundColor: category.color } : undefined}
+                  >
+                    <CategoryIcon cat={category.id} size={15} /> {category.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <DocumentAudiencePicker
+              family={state.family}
+              value={detailAudienceIds}
+              onChange={(ids) => {
+                setDetailAudienceIds(ids)
+                const patch = { audienceIds: ids.length ? ids : undefined }
+                updateDoc(detail.id, patch)
+                setDetail({ ...detail, ...patch })
+              }}
+            />
+
             <Field label="メモ" hint="変更はこの欄を離れた時に保存されます。">
               <textarea
                 className={`${inputClass} min-h-24`}
@@ -482,6 +580,94 @@ export function Documents() {
       </Modal>
 
       <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />
+
+      <Modal open={categoryManagerOpen} onClose={() => setCategoryManagerOpen(false)} title="書類の分類を管理">
+        <div className="space-y-4">
+          <Field label="新しい分類名">
+            <input
+              className={inputClass}
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              placeholder="習い事、保険、町内会 など"
+            />
+          </Field>
+          <div>
+            <span className="mb-1 block text-sm font-semibold text-slate-600">色</span>
+            <div className="flex flex-wrap gap-2">
+              {CATEGORY_COLORS.map((color) => (
+                <button
+                  key={color}
+                  onClick={() => setNewCategoryColor(color)}
+                  className={`h-8 w-8 rounded-full ${newCategoryColor === color ? 'ring-2 ring-slate-700 ring-offset-2' : ''}`}
+                  style={{ backgroundColor: color }}
+                  aria-label="分類の色"
+                />
+              ))}
+            </div>
+          </div>
+          <Button
+            className="w-full"
+            disabled={!newCategoryName.trim() || categoryNameExists}
+            onClick={() => {
+              addDocCategory(newCategoryName, newCategoryColor)
+              setNewCategoryName('')
+            }}
+          >
+            <PlusIcon width={18} height={18} /> 分類を追加
+          </Button>
+          {categoryNameExists && <p className="text-xs text-red-500">同じ名前の分類があります。</p>}
+
+          <div className="border-t border-slate-200 pt-3">
+            <p className="mb-2 text-xs font-bold text-slate-400">使用中の分類</p>
+            <div className="space-y-2">
+              {categories.map((category) => (
+                  <div key={category.id} className="flex items-center gap-3 rounded-xl border border-slate-200 p-3">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ color: category.color, backgroundColor: `${category.color}1a` }}>
+                      <CategoryIcon cat={category.id} size={19} />
+                    </span>
+                    <span className="flex-1 font-semibold text-slate-700">{category.label}</span>
+                    {category.id !== 'other' && (
+                      <button
+                        onClick={async () => {
+                          const ok = await confirm({
+                            title: '分類を削除',
+                            message: `「${category.label}」を削除しますか？この分類の書類と予定は「その他」へ移動します。`,
+                            confirmLabel: '削除',
+                            danger: true,
+                          })
+                          if (!ok) return
+                          removeDocCategory(category.id)
+                          if (active === category.id) setCat('all')
+                        }}
+                        className="p-2 text-slate-300 active:text-red-500"
+                        aria-label={`${category.label}を削除`}
+                      >
+                        <TrashIcon width={18} height={18} />
+                      </button>
+                    )}
+                  </div>
+              ))}
+            </div>
+          </div>
+          {state.hiddenDocCategoryIds.length > 0 && (
+            <div className="border-t border-slate-200 pt-3">
+              <p className="mb-2 text-xs font-bold text-slate-400">削除した標準分類</p>
+              <div className="flex flex-wrap gap-2">
+                {DOC_CATEGORIES.filter((category) => state.hiddenDocCategoryIds.includes(category.id)).map((category) => (
+                  <button
+                    key={category.id}
+                    onClick={() => restoreDocCategory(category.id)}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-500"
+                  >
+                    <PlusIcon width={15} height={15} /> {category.label}を戻す
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <p className="text-xs text-slate-400">追加した分類も、次回のAI読み込み時に自動振り分け候補として使われます。</p>
+        </div>
+      </Modal>
 
       <Modal open={printPicker} onClose={() => setPrintPicker(false)} title="まとめて印刷するQRを選ぶ">
         <div className="space-y-3">

@@ -2,7 +2,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useStore } from '../lib/store'
 import { ICON_SRC } from '../brand'
 import { CategoryIcon } from '../components/CategoryIcon'
-import { DOC_CATEGORIES } from '../types'
+import { findDocCategory } from '../types'
 import { formatJpDate } from '../lib/util'
 
 /**
@@ -30,7 +30,8 @@ export function DocView() {
     )
   }
 
-  const cat = DOC_CATEGORIES.find((c) => c.id === doc.category)
+  const cat = findDocCategory(doc.category, state.customDocCategories, state.hiddenDocCategoryIds)
+  const audience = doc.audienceIds?.length ? state.family.filter((f) => doc.audienceIds?.includes(f.id)) : []
 
   return (
     <div className="mx-auto min-h-screen max-w-lg bg-slate-100">
@@ -46,6 +47,9 @@ export function DocView() {
         <div>
           <h1 className="text-xl font-extrabold text-slate-800">{doc.title}</h1>
           <p className="text-xs text-slate-400">取り込み: {formatJpDate(new Date(doc.createdAt).toISOString().slice(0, 10))}</p>
+          <p className="mt-1 text-xs text-slate-500">
+            対象: {audience.length ? audience.map((f) => f.name).join('・') : '家族全員'}
+          </p>
         </div>
         {doc.image && (
           <a href={doc.image} target="_blank" rel="noopener" className="block">

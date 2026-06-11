@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStore } from '../lib/store'
 import { Card, Badge, SectionTitle, EmptyState } from '../components/ui'
-import { DOC_CATEGORIES } from '../types'
+import { allDocCategories, findDocCategory } from '../types'
 import type { CalendarEvent, DocItem } from '../types'
 import { formatJpDate, relativeDays, todayISO } from '../lib/util'
 import { QrModal } from '../components/QrModal'
@@ -14,6 +14,7 @@ import { EventEditModal } from '../components/EventEditModal'
 
 export function Home() {
   const { state, cloud } = useStore()
+  const categories = allDocCategories(state.customDocCategories, state.hiddenDocCategoryIds)
   const [qrDoc, setQrDoc] = useState<DocItem | null>(null)
   const [editProfile, setEditProfile] = useState(false)
   const [editEvent, setEditEvent] = useState<CalendarEvent | null>(null)
@@ -111,7 +112,7 @@ export function Home() {
         ) : (
           <div className="space-y-2">
             {upcoming.map((e) => {
-              const cat = DOC_CATEGORIES.find((c) => c.id === e.category)
+              const cat = findDocCategory(e.category, state.customDocCategories, state.hiddenDocCategoryIds)
               const soon = e.date === today
               return (
                 <Card key={e.id} onClick={() => setEditEvent(e)} className="flex items-center gap-3 p-3">
@@ -183,7 +184,7 @@ export function Home() {
           フォルダ
         </SectionTitle>
         <div className="grid grid-cols-2 gap-3">
-          {DOC_CATEGORIES.map((c) => {
+          {categories.map((c) => {
             const docs = state.docs.filter((d) => d.category === c.id)
             return (
               <Link key={c.id} to={`/docs?cat=${c.id}`}>
@@ -211,7 +212,7 @@ export function Home() {
           <SectionTitle>冷蔵庫に貼るQR</SectionTitle>
           <div className="flex gap-2 overflow-x-auto pb-1">
             {state.docs.slice(0, 8).map((d) => {
-              const cat = DOC_CATEGORIES.find((c) => c.id === d.category)
+              const cat = findDocCategory(d.category, state.customDocCategories, state.hiddenDocCategoryIds)
               return (
                 <button
                   key={d.id}

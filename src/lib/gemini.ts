@@ -1,4 +1,4 @@
-import type { DocCategory, Settings } from '../types'
+import { DOC_CATEGORIES, type DocCategory, type DocCategoryDefinition, type FamilyMember, type Settings } from '../types'
 import { splitDataUrl } from './util'
 import { recordUsage } from './usage'
 
@@ -122,42 +122,64 @@ export interface ScanResult {
   category: DocCategory
   summary: string
   text: string
+  /** AIが文面から判定した対象メンバー。空配列は家族全員 */
+  audienceIds?: string[]
   /** 抽出した予定（提出期限・行事など） */
   events: { title: string; date: string; time?: string; note?: string }[]
   /** レシピの場合のみ */
   recipe?: { ingredients: string[]; steps: string[]; servings?: string }
 }
 
-const SCAN_SCHEMA = {
-  type: 'object',
-  properties: {
-    title: { type: 'string' },
-    category: { type: 'string', enum: ['school', 'garbage', 'recipe', 'utility', 'manual', 'work', 'other'] },
-    summary: { type: 'string' },
-    text: { type: 'string' },
-    events: {
-      type: 'array',
-      items: {
+function scanSchema(categories: DocCategoryDefinition[]) {
+  return {
+    type: 'object',
+    properties: {
+      title: { type: 'string' },
+      category: { type: 'string', enum: categories.map((c) => c.id) },
+      summary: { type: 'string' },
+      text: { type: 'string' },
+      audienceIds: { type: 'array', items: { type: 'string' } },
+      events: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            title: { type: 'string' },
+            date: { type: 'string' },
+            time: { type: 'string' },
+            note: { type: 'string' },
+          },
+          required: ['title', 'date'],
+        },
+      },
+      recipe: {
         type: 'object',
         properties: {
-          title: { type: 'string' },
-          date: { type: 'string' },
-          time: { type: 'string' },
-          note: { type: 'string' },
+          ingredients: { type: 'array', items: { type: 'string' } },
+          steps: { type: 'array', items: { type: 'string' } },
+          servings: { type: 'string' },
         },
-        required: ['title', 'date'],
       },
     },
-    recipe: {
-      type: 'object',
-      properties: {
-        ingredients: { type: 'array', items: { type: 'string' } },
-        steps: { type: 'array', items: { type: 'string' } },
-        servings: { type: 'string' },
-      },
-    },
-  },
-  required: ['title', 'category', 'summary', 'text', 'events'],
+    required: ['title', 'category', 'summary', 'text', 'audienceIds', 'events'],
+  }
+}
+
+function categoryPrompt(categories: DocCategoryDefinition[]): string {
+  return JSON.stringify(categories.map(({ id, label }) => ({ id, label })))
+}
+
+function normalizeScanResult(
+  result: ScanResult,
+  categories: DocCategoryDefinition[],
+  family: FamilyMember[],
+): ScanResult {
+  const memberIds = new Set(family.map((member) => member.id))
+  return {
+    ...result,
+    category: categories.some((c) => c.id === result.category) ? result.category : 'other',
+    audienceIds: [...new Set((result.audienceIds ?? []).filter((id) => memberIds.has(id)))],
+  }
 }
 
 /**
@@ -168,17 +190,20 @@ export async function scanDocument(
   settings: Settings,
   today: string,
   instruction?: string,
+  categories: DocCategoryDefinition[] = DOC_CATEGORIES,
+  family: FamilyMember[] = [],
 ): Promise<ScanResult> {
   const list = Array.isArray(images) ? images : [images]
   const multi = list.length > 1
   const prompt = `You are a household paper-organizing assistant. Analyze ${multi ? `${list.length} files (photos or PDF pages) that are pages of ONE document (or related printouts). Combine them` : 'a file (photo or PDF) of a document'} often stuck on a fridge (school handout, garbage-collection calendar, recipe clipping, or other notice). Today is ${today}.
 Respond with JSON only. ALL text values must be in Japanese.
 1. OCR all text${multi ? ' from every page, in order,' : ''} into "text" (Japanese).
-2. "category": one of school / garbage / recipe / utility(電気・ガス・水道・光熱費の請求や検針) / manual(取扱説明書・保証書) / work(仕事・業務関連) / other.
-3. "title": short descriptive headline. "summary": 1-2 sentence summary covering all pages.
-4. "events": date-bearing items (deadlines, events) from any page. "date" as YYYY-MM-DD (if year missing, infer the nearest upcoming year).
-5. Only if it is a recipe, fill "recipe" with ingredients, steps, servings.${
-    instruction ? `\n6. Also follow this user instruction: ${instruction}` : ''
+2. "category": choose exactly one ID from: ${categoryPrompt(categories)}.
+3. "audienceIds": choose member IDs only when the document clearly names or targets them. Use [] when it is for everyone or cannot be determined. Members: ${JSON.stringify(family.map(({ id, name }) => ({ id, name })))}.
+4. "title": short descriptive headline. "summary": 1-2 sentence summary covering all pages.
+5. "events": date-bearing items (deadlines, events) from any page. "date" as YYYY-MM-DD (if year missing, infer the nearest upcoming year).
+6. Only if it is a recipe, fill "recipe" with ingredients, steps, servings.${
+    instruction ? `\n7. Also follow this user instruction: ${instruction}` : ''
   }`
 
   const parts: { text?: string; inline_data?: { mime_type: string; data: string } }[] = [{ text: prompt }]
@@ -187,25 +212,32 @@ Respond with JSON only. ALL text values must be in Japanese.
     parts.push({ inline_data: { mime_type: mime, data: base64 } })
   }
 
-  const raw = await generate(parts, settings, { schema: SCAN_SCHEMA, temperature: 0.2 })
-  return parseJson<ScanResult>(raw)
+  const raw = await generate(parts, settings, { schema: scanSchema(categories), temperature: 0.2 })
+  return normalizeScanResult(parseJson<ScanResult>(raw), categories, family)
 }
 
 /**
  * 画像ではなく「貼り付けたテキスト」を解析して分類・要約・予定抽出を行う（画像トークン不要で安価）。
  */
-export async function analyzeDocumentText(text: string, settings: Settings, today: string): Promise<ScanResult> {
+export async function analyzeDocumentText(
+  text: string,
+  settings: Settings,
+  today: string,
+  categories: DocCategoryDefinition[] = DOC_CATEGORIES,
+  family: FamilyMember[] = [],
+): Promise<ScanResult> {
   const prompt = `You organize household documents. Below is text the user pasted from a paper (e.g., copied via phone text recognition). Today is ${today}.
 Respond with JSON only. ALL text values must be in Japanese. Keep the original text in "text".
-1. "category": one of school / garbage / recipe / utility(電気・ガス・水道・光熱費) / manual(取扱説明書・保証書) / work(仕事) / other.
-2. "title": short headline. "summary": 1-2 sentence summary.
-3. "events": date-bearing items as { title, date(YYYY-MM-DD), time?, note? } (infer nearest upcoming year if missing).
-4. Only if a recipe, fill "recipe".
+1. "category": choose exactly one ID from: ${categoryPrompt(categories)}.
+2. "audienceIds": choose member IDs only when the text clearly names or targets them. Use [] for everyone or unknown. Members: ${JSON.stringify(family.map(({ id, name }) => ({ id, name })))}.
+3. "title": short headline. "summary": 1-2 sentence summary.
+4. "events": date-bearing items as { title, date(YYYY-MM-DD), time?, note? } (infer nearest upcoming year if missing).
+5. Only if a recipe, fill "recipe".
 
 PASTED TEXT:
 ${text}`
-  const raw = await generate([{ text: prompt }], settings, { schema: SCAN_SCHEMA, temperature: 0.2, light: true })
-  const r = parseJson<ScanResult>(raw)
+  const raw = await generate([{ text: prompt }], settings, { schema: scanSchema(categories), temperature: 0.2, light: true })
+  const r = normalizeScanResult(parseJson<ScanResult>(raw), categories, family)
   if (!r.text) r.text = text
   return r
 }

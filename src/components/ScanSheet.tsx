@@ -6,16 +6,18 @@ import { scanDocument, analyzeDocumentText, GeminiError, type ScanResult } from 
 import { demoScan } from '../lib/demo'
 import { classifyByKeywords, extractDates } from '../lib/classify'
 import { fileToScanData, isPdfDataUrl, saveImagesToDevice, todayISO, uid, formatJpDate } from '../lib/util'
-import { DOC_CATEGORIES, type DocCategory } from '../types'
+import { allDocCategories, type DocCategory } from '../types'
 import { CategoryIcon } from './CategoryIcon'
 import { DocIcon } from './icons'
 import { renderPdfPages } from '../lib/pdf'
+import { DocumentAudiencePicker } from './DocumentAudiencePicker'
 
 type Phase = 'pick' | 'confirm' | 'analyzing' | 'review'
 
 export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const store = useStore()
   const aiSettings = store.aiSettings
+  const categories = allDocCategories(store.state.customDocCategories, store.state.hiddenDocCategoryIds)
   const fileRef = useRef<HTMLInputElement>(null)
   const fileLoadId = useRef(0)
   const [saveToPhotos, setSaveToPhotos] = useState(store.state.settings.saveScansToPhotos ?? false)
@@ -31,6 +33,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
   const [category, setCategory] = useState<DocCategory>('other')
   const [title, setTitle] = useState('')
   const [note, setNote] = useState('')
+  const [audienceIds, setAudienceIds] = useState<string[]>([])
   const [isSimple, setIsSimple] = useState(false)
   // 手入力（テキスト貼り付け）モード
   const [manualText, setManualText] = useState('')
@@ -51,6 +54,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
     setCategory('other')
     setTitle('')
     setNote('')
+    setAudienceIds([])
     setIsSimple(false)
     setManualText('')
     setIsManual(false)
@@ -98,6 +102,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
     setResult(res)
     setCategory(res.category)
     setTitle(res.title)
+    setAudienceIds(res.audienceIds ?? [])
     setPickedEvents(new Set(res.events.map((_, i) => i)))
     setUsedDemo(!!opts.demo)
     setIsManual(!!opts.manual)
@@ -127,7 +132,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
       let res: ScanResult
       let demo = false
       try {
-        res = await scanDocument(images, aiSettings, todayISO(), instruction.trim() || undefined)
+        res = await scanDocument(images, aiSettings, todayISO(), instruction.trim() || undefined, categories, store.state.family)
       } catch (e) {
         if (e instanceof GeminiError && e.message === 'NO_KEY') {
           res = demoScan()
@@ -165,7 +170,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
     setRefining(true)
     setError('')
     try {
-      const res = await analyzeDocumentText(result.text, aiSettings, todayISO())
+      const res = await analyzeDocumentText(result.text, aiSettings, todayISO(), categories, store.state.family)
       toReview(res, { manual: false })
     } catch (e) {
       setError(
@@ -196,6 +201,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
       title: title || result.title,
       category,
       note: note.trim() || undefined,
+      audienceIds: audienceIds.length ? audienceIds : undefined,
       text: result.text,
       summary: result.summary,
       image,
@@ -213,6 +219,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
         note: e.note,
         category,
         docId,
+        assignee: audienceIds.length === 1 ? audienceIds[0] : undefined,
         remind: true,
         done: false,
         createdAt: now,
@@ -437,7 +444,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
           <div>
             <span className="mb-1 block text-sm font-semibold text-slate-600">分類</span>
             <div className="flex flex-wrap gap-2">
-              {DOC_CATEGORIES.map((c) => (
+              {categories.map((c) => (
                 <button
                   key={c.id}
                   onClick={() => setCategory(c.id)}
@@ -451,6 +458,8 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
               ))}
             </div>
           </div>
+
+          <DocumentAudiencePicker family={store.state.family} value={audienceIds} onChange={setAudienceIds} />
 
           <Field label="メモ" hint="登録後も書類の詳細画面から編集できます。">
             <textarea

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../lib/store'
 import { Modal, Button, Field, inputClass } from './ui'
-import { DOC_CATEGORIES, type CalendarEvent, type DocCategory } from '../types'
+import { allDocCategories, type CalendarEvent, type DocCategory } from '../types'
 import { CategoryIcon } from './CategoryIcon'
 import { Avatar } from './Avatar'
 import { useConfirm } from '../lib/confirm'
@@ -11,6 +11,7 @@ import { formatJpDate, uid } from '../lib/util'
 /** 既存の予定を編集・削除するシート（ホーム/カレンダーから共通利用） */
 export function EventEditModal({ event, onClose }: { event: CalendarEvent | null; onClose: () => void }) {
   const { state, updateEvent, addEvents, removeEvent, removeEventSeries } = useStore()
+  const categories = allDocCategories(state.customDocCategories, state.hiddenDocCategoryIds)
   const confirm = useConfirm()
   const [title, setTitle] = useState('')
   const [date, setDate] = useState('')
@@ -91,7 +92,7 @@ export function EventEditModal({ event, onClose }: { event: CalendarEvent | null
         <div>
           <span className="mb-1 block text-sm font-semibold text-slate-600">分類</span>
           <div className="flex flex-wrap gap-2">
-            {DOC_CATEGORIES.map((c) => (
+            {categories.map((c) => (
               <button
                 key={c.id}
                 onClick={() => setCategory(c.id)}
