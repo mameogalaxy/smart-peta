@@ -1,9 +1,11 @@
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useStore } from '../lib/store'
 import { ICON_SRC } from '../brand'
 import { CategoryIcon } from '../components/CategoryIcon'
 import { findDocCategory } from '../types'
 import { formatJpDate } from '../lib/util'
+import { ImageLightbox } from '../components/ImageLightbox'
 
 /**
  * 家族がQRコードから飛んでくる単体ビュー。
@@ -11,6 +13,7 @@ import { formatJpDate } from '../lib/util'
  *  実運用ではバックエンド同期に差し替えるポイント。）
  */
 export function DocView() {
+  const [lightbox, setLightbox] = useState<string | null>(null)
   const { id } = useParams()
   const { state } = useStore()
   const doc = state.docs.find((d) => d.id === id)
@@ -52,10 +55,10 @@ export function DocView() {
           </p>
         </div>
         {doc.image && (
-          <a href={doc.image} target="_blank" rel="noopener" className="block">
+          <button type="button" onClick={() => setLightbox(doc.image ?? null)} className="block w-full">
             <img src={doc.image} alt={doc.title} className="w-full rounded-2xl ring-1 ring-slate-200" />
             <span className="mt-1 block text-center text-[11px] text-slate-400">タップで拡大</span>
-          </a>
+          </button>
         )}
         {doc.note && (
           <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200/70">
@@ -79,6 +82,7 @@ export function DocView() {
           アプリで開く
         </Link>
       </main>
+      <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />
     </div>
   )
 }
