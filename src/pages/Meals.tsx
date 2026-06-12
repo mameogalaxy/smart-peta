@@ -1,12 +1,24 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../lib/store'
 import { Card, Button, Field, inputClass, Spinner, EmptyState, Badge, Modal } from '../components/ui'
 import { MealIcon, SparkleIcon, CartIcon, TrashIcon, CameraIcon, PlusIcon, CloseIcon } from '../components/icons'
 import { suggestDinner, scanLunchMenu, scanFridge, GeminiError, type MealSuggestion } from '../lib/gemini'
 import { demoDinner, demoLunchMenu, demoFridge } from '../lib/demo'
 import { addDaysISO, downscaleImage, fileToDataUrl, fileToScanData, formatJpDate, todayISO, uid } from '../lib/util'
-import type { Recipe } from '../types'
+import type { MealCourse, Recipe } from '../types'
 import { useConfirm } from '../lib/confirm'
+
+const DEFAULT_MOODS = ['おまかせ', 'ガッツリ', 'あっさり', '時短', '野菜多め']
+const COURSE_OPTIONS: { value: MealCourse; label: string }[] = [
+  { value: 'main', label: '主菜' },
+  { value: 'staple', label: '主食' },
+  { value: 'side', label: '副菜' },
+  { value: 'soup', label: '汁物' },
+]
+
+function courseLabel(course: MealCourse): string {
+  return COURSE_OPTIONS.find((option) => option.value === course)?.label ?? course
+}
 
 export function Meals() {
   const store = useStore()
@@ -26,9 +38,29 @@ export function Meals() {
   const [scanningFridge, setScanningFridge] = useState(false)
   const [fridgeMsg, setFridgeMsg] = useState('')
   const [fridgeInput, setFridgeInput] = useState('')
+  const [mood, setMood] = useState('おまかせ')
+  const [courses, setCourses] = useState<MealCourse[]>(['main', 'staple', 'side', 'soup'])
+  const [moodModal, setMoodModal] = useState(false)
+  const [newMood, setNewMood] = useState('')
 
   const meal = state.meals.find((m) => m.date === date)
   const schoolLunch = meal?.schoolLunch ?? ''
+  const moodOptions = [...DEFAULT_MOODS, ...state.customMealMoods.filter((value) => !DEFAULT_MOODS.includes(value))]
+  const normalizedNewMood = newMood.trim()
+  const moodAlreadyExists = moodOptions.some((value) => value.toLowerCase() === normalizedNewMood.toLowerCase())
+
+  function saveMood() {
+    if (!normalizedNewMood || moodAlreadyExists) return
+    store.addMealMood(normalizedNewMood)
+    setMood(normalizedNewMood)
+    setNewMood('')
+    setMoodModal(false)
+  }
+
+  useEffect(() => {
+    setSuggestion(null)
+    setError('')
+  }, [date, mood, courses])
 
   const recentDinners = useMemo(
     () =>
@@ -49,6 +81,9 @@ export function Meals() {
       breakfast: meal?.breakfast,
       lunch: meal?.lunch,
       dinner: meal?.dinner,
+      dinnerDishes: meal?.dinnerDishes,
+      dinnerMood: meal?.dinnerMood,
+      nutritionNote: meal?.nutritionNote,
       recipeIds: meal?.recipeIds ?? [],
       note: meal?.note,
       createdAt: meal?.createdAt ?? Date.now(),
@@ -141,6 +176,8 @@ export function Meals() {
       recentDinners,
       availableRecipes: state.recipes.map((r) => ({ title: r.title, ingredients: r.ingredients })),
       fridgeItems: state.inventory.map((i) => i.name),
+      mood: mood === 'おまかせ' ? undefined : mood,
+      courses,
     }
     try {
       let res: MealSuggestion
@@ -170,6 +207,9 @@ export function Meals() {
       breakfast: meal?.breakfast,
       lunch: meal?.lunch,
       dinner: suggestion.dinner,
+      dinnerDishes: suggestion.dishes,
+      dinnerMood: mood,
+      nutritionNote: suggestion.nutritionAdvice,
       recipeIds: meal?.recipeIds ?? [],
       note: suggestion.reason,
       createdAt: meal?.createdAt ?? Date.now(),
@@ -319,14 +359,65 @@ export function Meals() {
       </Card>
 
       {/* AI献立 */}
-      <Card className="p-4">
-        <div className="mb-2 flex items-center justify-between">
+      <Card className="space-y-4 p-4">
+        <div className="flex items-center justify-between">
           <h2 className="font-bold text-slate-800">今日の献立（夕食）</h2>
-          <Button variant="soft" onClick={suggest} disabled={loading}>
-            {loading ? <Spinner /> : <SparkleIcon width={18} height={18} />}
-            AIに提案
-          </Button>
+          <Badge color="#0f766e">栄養バランス対応</Badge>
         </div>
+
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-sm font-semibold text-slate-600">今日の気分</span>
+            <button
+              type="button"
+              onClick={() => setMoodModal(true)}
+              className="inline-flex items-center gap-1 text-xs font-bold text-brand-600"
+            >
+              <PlusIcon width={15} height={15} /> 気分を追加
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {moodOptions.map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setMood(value)}
+                className={`rounded-full px-3 py-1.5 text-sm font-semibold ${mood === value ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-600'}`}
+              >
+                {value}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <span className="mb-2 block text-sm font-semibold text-slate-600">提案してほしいもの</span>
+          <div className="grid grid-cols-4 gap-2">
+            {COURSE_OPTIONS.map((option) => {
+              const selected = courses.includes(option.value)
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() =>
+                    setCourses((current) =>
+                      selected ? (current.length > 1 ? current.filter((course) => course !== option.value) : current) : [...current, option.value],
+                    )
+                  }
+                  className={`min-h-11 rounded-lg text-sm font-bold ${selected ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-500'}`}
+                >
+                  {option.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <Button className="w-full" onClick={suggest} disabled={loading || courses.length === 0}>
+          {loading ? <Spinner /> : <SparkleIcon width={18} height={18} />}
+          {mood === 'おまかせ' ? '栄養士AIに献立を提案してもらう' : `「${mood}」の献立を提案してもらう`}
+        </Button>
 
         {meal?.dinner && !suggestion && (
           <div className="flex items-start gap-3 rounded-xl bg-red-50 p-3">
@@ -334,10 +425,35 @@ export function Meals() {
               <MealIcon width={22} height={22} />
             </div>
             <div className="flex-1">
-              <p className="font-bold text-slate-800">{meal.dinner}</p>
+              {meal.dinnerMood && <p className="mb-1 text-xs font-bold text-red-500">{meal.dinnerMood}</p>}
+              {meal.dinnerDishes?.length ? (
+                <div className="space-y-1">
+                  {meal.dinnerDishes.map((dish) => (
+                    <div key={`${dish.course}-${dish.name}`} className="flex gap-2 text-sm">
+                      <span className="w-10 shrink-0 font-bold text-slate-400">{courseLabel(dish.course)}</span>
+                      <span className="font-bold text-slate-800">{dish.name}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="font-bold text-slate-800">{meal.dinner}</p>
+              )}
               {meal.note && <p className="text-xs text-slate-500">{meal.note}</p>}
+              {meal.nutritionNote && <p className="mt-2 rounded-lg bg-white/70 px-2.5 py-2 text-xs font-semibold text-teal-700">栄養士メモ: {meal.nutritionNote}</p>}
             </div>
-            <button onClick={() => store.upsertMeal({ ...meal, dinner: undefined, note: undefined })} className="text-slate-300 active:text-red-500">
+            <button
+              onClick={() =>
+                store.upsertMeal({
+                  ...meal,
+                  dinner: undefined,
+                  dinnerDishes: undefined,
+                  dinnerMood: undefined,
+                  nutritionNote: undefined,
+                  note: undefined,
+                })
+              }
+              className="text-slate-300 active:text-red-500"
+            >
               <TrashIcon width={18} height={18} />
             </button>
           </div>
@@ -349,8 +465,19 @@ export function Meals() {
           <div className="animate-pop space-y-3 rounded-xl border border-brand-200 bg-brand-50/50 p-3">
             {usedDemo && <Badge color="#d97706">デモ提案</Badge>}
             <div>
-              <p className="text-lg font-extrabold text-slate-800">{suggestion.dinner}</p>
+              <div className="space-y-1.5">
+                {suggestion.dishes.map((dish) => (
+                  <div key={`${dish.course}-${dish.name}`} className="flex items-baseline gap-2">
+                    <Badge color="#0f766e">{courseLabel(dish.course)}</Badge>
+                    <p className="font-extrabold text-slate-800">{dish.name}</p>
+                  </div>
+                ))}
+              </div>
               <p className="mt-0.5 text-sm text-slate-500">{suggestion.reason}</p>
+            </div>
+            <div className="rounded-lg bg-teal-50 p-3">
+              <p className="text-xs font-bold text-teal-700">栄養士からのアドバイス</p>
+              <p className="mt-1 text-sm text-teal-900">{suggestion.nutritionAdvice}</p>
             </div>
             {suggestion.ingredients.length > 0 && (
               <div>
@@ -374,7 +501,7 @@ export function Meals() {
 
         {!meal?.dinner && !suggestion && !error && (
           <p className="py-3 text-center text-sm text-slate-400">
-            「AIに提案」を押すと、給食や最近の献立を踏まえた夕食を提案します。
+            気分と料理区分を選ぶと、給食や最近の献立を踏まえて栄養バランスも提案します。
           </p>
         )}
       </Card>
@@ -446,6 +573,55 @@ export function Meals() {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal open={moodModal} onClose={() => setMoodModal(false)} title="気分を追加">
+        <div className="space-y-4">
+          <Field label="気分の名前" hint="例: こってり、魚が食べたい、子ども向け">
+            <div className="flex gap-2">
+              <input
+                className={inputClass}
+                value={newMood}
+                onChange={(e) => setNewMood(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && saveMood()}
+                placeholder="気分を入力"
+                maxLength={20}
+                autoFocus
+              />
+              <Button
+                aria-label="気分を追加"
+                disabled={!normalizedNewMood || moodAlreadyExists}
+                onClick={saveMood}
+              >
+                <PlusIcon width={18} height={18} />
+              </Button>
+            </div>
+            {normalizedNewMood && moodAlreadyExists && <p className="mt-1 text-xs font-semibold text-amber-600">同じ気分が登録済みです。</p>}
+          </Field>
+          {state.customMealMoods.length > 0 && (
+            <div>
+              <p className="mb-2 text-sm font-semibold text-slate-600">追加した気分</p>
+              <div className="space-y-2">
+                {state.customMealMoods.map((value) => (
+                  <div key={value} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+                    <span className="text-sm font-semibold text-slate-700">{value}</span>
+                    <button
+                      type="button"
+                      aria-label={`${value}を削除`}
+                      onClick={() => {
+                        store.removeMealMood(value)
+                        if (mood === value) setMood('おまかせ')
+                      }}
+                      className="p-1 text-slate-400 active:text-red-500"
+                    >
+                      <TrashIcon width={17} height={17} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </Modal>
     </div>
   )

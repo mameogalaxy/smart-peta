@@ -103,6 +103,13 @@ export interface ShoppingItem {
 }
 
 /** 献立（1日分） */
+export type MealCourse = 'main' | 'staple' | 'side' | 'soup'
+
+export interface MealDish {
+  course: MealCourse
+  name: string
+}
+
 export interface MealPlan {
   id: string
   /** YYYY-MM-DD */
@@ -112,6 +119,12 @@ export interface MealPlan {
   breakfast?: string
   lunch?: string
   dinner?: string
+  /** AI提案で採用した料理区分ごとの夕食 */
+  dinnerDishes?: MealDish[]
+  /** 提案時に選んだ気分 */
+  dinnerMood?: string
+  /** 栄養士視点のバランスコメント */
+  nutritionNote?: string
   /** 使用したレシピID */
   recipeIds: string[]
   note?: string
@@ -183,6 +196,8 @@ export interface AppState {
   recipes: Recipe[]
   shopping: ShoppingItem[]
   meals: MealPlan[]
+  /** 家族で共有する追加の献立気分 */
+  customMealMoods: string[]
   /** 冷蔵庫の中身（在庫） */
   inventory: InventoryItem[]
   family: FamilyMember[]

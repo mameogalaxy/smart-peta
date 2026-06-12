@@ -53,20 +53,34 @@ export function demoScan(): ScanResult {
 }
 
 export function demoDinner(ctx: MealContext): MealSuggestion {
-  const pool = ctx.availableRecipes.length
+  const mainPool = ctx.availableRecipes.length
     ? ctx.availableRecipes
-    : [
-        { title: '鮭のホイル焼き', ingredients: ['生鮭 2切れ', '玉ねぎ', 'しめじ', 'バター', 'ポン酢'] },
-        { title: '麻婆豆腐', ingredients: ['豆腐 1丁', '豚ひき肉 150g', '長ねぎ', '豆板醤', '味噌'] },
-        { title: '豚の生姜焼き', ingredients: ['豚ロース 200g', '生姜', '玉ねぎ', '醤油', 'みりん'] },
-      ]
-  const pick = pool[Math.floor(Math.random() * pool.length)]
+    : ctx.mood === 'あっさり'
+      ? [{ title: '鮭と野菜の蒸し焼き', ingredients: ['生鮭 2切れ', 'キャベツ', 'しめじ', 'ポン酢'] }]
+      : [{ title: '豚の生姜焼き', ingredients: ['豚ロース 200g', '生姜', '玉ねぎ', '醤油', 'みりん'] }]
+  const pick = mainPool[Math.floor(Math.random() * mainPool.length)]
+  const dishes = (ctx.courses.length ? ctx.courses : ['main' as const]).map((course) => ({
+    course,
+    name:
+      course === 'main'
+        ? pick.title
+        : course === 'staple'
+          ? 'ごはん'
+          : course === 'side'
+            ? '小松菜とにんじんのごま和え'
+            : '豆腐とわかめのみそ汁',
+  }))
+  const extraIngredients = dishes.flatMap((dish) =>
+    dish.course === 'side' ? ['小松菜', 'にんじん', 'すりごま'] : dish.course === 'soup' ? ['豆腐', 'わかめ', '味噌'] : [],
+  )
   const fridge = ctx.fridgeItems.length ? `冷蔵庫の${ctx.fridgeItems.slice(0, 3).join('・')}を使い、` : ''
   return {
-    dinner: pick.title,
-    reason: `${fridge}給食「${ctx.schoolLunch || '不明'}」と主菜が被らず、最近の献立とも重複しない一品です。（デモ提案）`,
+    dinner: dishes.map((dish) => dish.name).join('、'),
+    dishes,
+    reason: `${ctx.mood ? `「${ctx.mood}」の気分に合わせ、` : ''}${fridge}給食「${ctx.schoolLunch || '不明'}」と被りにくい献立です。（デモ提案）`,
+    nutritionAdvice: '主菜のたんぱく質と副菜の野菜を組み合わせています。主食・汁物を選ばなかった場合は、量や塩分に合わせて追加してください。',
     recipeTitle: ctx.availableRecipes.length ? pick.title : undefined,
-    ingredients: pick.ingredients,
+    ingredients: [...new Set([...pick.ingredients, ...extraIngredients])],
   }
 }
 

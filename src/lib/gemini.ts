@@ -1,4 +1,4 @@
-import { DOC_CATEGORIES, type DocCategory, type DocCategoryDefinition, type FamilyMember, type Settings } from '../types'
+import { DOC_CATEGORIES, type DocCategory, type DocCategoryDefinition, type FamilyMember, type MealCourse, type MealDish, type Settings } from '../types'
 import { splitDataUrl } from './util'
 import { recordUsage } from './usage'
 
@@ -245,7 +245,9 @@ ${text}`
 // ---- 献立生成 ----
 export interface MealSuggestion {
   dinner: string
+  dishes: MealDish[]
   reason: string
+  nutritionAdvice: string
   recipeTitle?: string
   ingredients: string[]
 }
@@ -254,11 +256,23 @@ const MEAL_SCHEMA = {
   type: 'object',
   properties: {
     dinner: { type: 'string' },
+    dishes: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          course: { type: 'string', enum: ['main', 'staple', 'side', 'soup'] },
+          name: { type: 'string' },
+        },
+        required: ['course', 'name'],
+      },
+    },
     reason: { type: 'string' },
+    nutritionAdvice: { type: 'string' },
     recipeTitle: { type: 'string' },
     ingredients: { type: 'array', items: { type: 'string' } },
   },
-  required: ['dinner', 'reason', 'ingredients'],
+  required: ['dinner', 'dishes', 'reason', 'nutritionAdvice', 'ingredients'],
 }
 
 export interface MealContext {
@@ -268,6 +282,10 @@ export interface MealContext {
   availableRecipes: { title: string; ingredients: string[] }[]
   /** 冷蔵庫にある食材 */
   fridgeItems: string[]
+  /** 食べたい雰囲気・気分 */
+  mood?: string
+  /** 提案してほしい料理区分 */
+  courses: MealCourse[]
 }
 
 /**
@@ -281,19 +299,37 @@ export async function suggestDinner(ctx: MealContext, settings: Settings): Promi
     ? ctx.availableRecipes.map((r) => `・${r.title}（材料: ${r.ingredients.join('、')}）`).join('\n')
     : '（保存レシピなし）'
 
-  const prompt = `You are a household meal planner. Suggest ONE dinner for ${ctx.date}. Respond in JSON only, with all text values in Japanese.
+  const courseLabels: Record<MealCourse, string> = { main: '主菜', staple: '主食', side: '副菜', soup: '汁物' }
+  const requestedCourses = ctx.courses.length ? ctx.courses : ['main' as const]
+  const prompt = `You are both a registered dietitian and a practical household meal planner. Suggest a dinner menu for ${ctx.date}. Respond in JSON only, with all text values in Japanese.
 Conditions (by priority):
-1. Use the fridge ingredients as much as possible to minimize extra shopping. Fridge: [${ctx.fridgeItems.join(', ') || 'unknown'}].
-2. Avoid overlapping the main dish/ingredients with today's school lunch: "${ctx.schoolLunch || 'unknown'}".
-3. Avoid repeating recent dinners: [${ctx.recentDinners.join(' / ') || 'none'}].
-4. Prefer the saved recipes below; otherwise suggest a common Japanese home dish.
+1. Match the requested mood: "${ctx.mood || 'おまかせ'}".
+2. Return exactly one dish for each requested course, and no unrequested courses. Requested courses: [${requestedCourses.map((course) => `${course}:${courseLabels[course]}`).join(', ')}].
+3. Use the fridge ingredients as much as possible to minimize extra shopping. Fridge: [${ctx.fridgeItems.join(', ') || 'unknown'}].
+4. Avoid overlapping the main dish/ingredients with today's school lunch: "${ctx.schoolLunch || 'unknown'}".
+5. Avoid repeating recent dinners: [${ctx.recentDinners.join(' / ') || 'none'}].
+6. Prefer the saved recipes below; otherwise suggest common Japanese home dishes.
+7. As a dietitian, assess protein, vegetables, carbohydrates, salt, and overall balance across the requested courses. If some courses are not requested, explain one concise optional addition that would improve balance.
 Saved recipes:
 ${recipeList}
 
-Return: "dinner" (dish name), "reason" (1-2 sentences considering fridge/lunch/recent dinners), "recipeTitle" (saved recipe name if used), "ingredients" (array of all ingredients needed to cook it). JSON only.`
+Return: "dinner" (a short menu summary joining all proposed dish names), "dishes" (array of objects with "course" and "name"), "reason" (1-2 sentences considering mood/fridge/lunch/recent dinners), "nutritionAdvice" (1-2 concise sentences from a dietitian), "recipeTitle" (saved recipe name if used), "ingredients" (deduplicated array of all ingredients needed for the entire menu). JSON only.`
 
   const raw = await generate([{ text: prompt }], settings, { schema: MEAL_SCHEMA, temperature: 0.8, light: true })
-  return parseJson<MealSuggestion>(raw)
+  const result = parseJson<MealSuggestion>(raw)
+  const proposed = new Map(
+    result.dishes
+      .filter((dish) => requestedCourses.includes(dish.course) && dish.name.trim())
+      .map((dish) => [dish.course, { ...dish, name: dish.name.trim() }]),
+  )
+  result.dishes = requestedCourses.flatMap((course) => {
+    const dish = proposed.get(course)
+    return dish ? [dish] : []
+  })
+  if (!result.dishes.length && result.dinner.trim()) {
+    result.dishes = [{ course: requestedCourses[0], name: result.dinner.trim() }]
+  }
+  return result
 }
 
 // ---- 冷蔵庫スキャン ----

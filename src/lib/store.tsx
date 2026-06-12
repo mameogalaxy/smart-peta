@@ -45,7 +45,7 @@ function resolveConfig(raw?: string): Record<string, unknown> | null {
 }
 
 /** クラウド同期する配列コレクション（画像は docs から除外して送る） */
-const SYNCED = ['docs', 'customDocCategories', 'hiddenDocCategoryIds', 'events', 'shopping', 'recipes', 'meals', 'inventory', 'family'] as const
+const SYNCED = ['docs', 'customDocCategories', 'hiddenDocCategoryIds', 'events', 'shopping', 'recipes', 'meals', 'customMealMoods', 'inventory', 'family'] as const
 type SyncedKey = (typeof SYNCED)[number]
 
 export type CloudStatus = 'off' | 'connecting' | 'on' | 'error'
@@ -100,6 +100,7 @@ function initialState(): AppState {
     recipes: [],
     shopping: [],
     meals: [],
+    customMealMoods: [],
     inventory: [],
     family: seedFamily(),
     settings: { ...defaultSettings },
@@ -121,6 +122,7 @@ function load(): AppState {
       ...base,
       ...parsed,
       inventory: parsed.inventory ?? [],
+      customMealMoods: parsed.customMealMoods ?? [],
       customDocCategories: parsed.customDocCategories ?? [],
       hiddenDocCategoryIds: parsed.hiddenDocCategoryIds ?? [],
       settings,
@@ -158,6 +160,8 @@ interface StoreApi {
   // 献立
   upsertMeal: (m: MealPlan) => void
   removeMeal: (id: string) => void
+  addMealMood: (mood: string) => void
+  removeMealMood: (mood: string) => void
   /** 給食献立表スキャン等から、日付ごとの給食を一括登録 */
   setSchoolLunches: (items: { date: string; menu: string }[]) => void
   /** 給食を削除（dateを渡せばその日、省略で全部） */
@@ -231,9 +235,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         return { ...s, docs: remote }
       }
-      if (col === 'hiddenDocCategoryIds') {
+      if (col === 'hiddenDocCategoryIds' || col === 'customMealMoods') {
         const remote = items.filter((x): x is string => typeof x === 'string')
-        return { ...s, hiddenDocCategoryIds: doMerge ? [...new Set([...remote, ...s.hiddenDocCategoryIds])] : remote }
+        const local = col === 'hiddenDocCategoryIds' ? s.hiddenDocCategoryIds : s.customMealMoods
+        return { ...s, [col]: doMerge ? [...new Set([...remote, ...local])] : remote } as AppState
       }
       if (doMerge) {
         const arr = items as { id?: string }[]
@@ -413,7 +418,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setDoc(fsDoc(getDb(), 'households', hid, 'data', col), { items: JSON.parse(ser) }).catch(() => {})
       }
     }
-  }, [cloud.status, hid, state.docs, state.customDocCategories, state.hiddenDocCategoryIds, state.events, state.shopping, state.recipes, state.meals, state.inventory, state.family])
+  }, [cloud.status, hid, state.docs, state.customDocCategories, state.hiddenDocCategoryIds, state.events, state.shopping, state.recipes, state.meals, state.customMealMoods, state.inventory, state.family])
 
   // 自分(この端末の利用者)を家族リストに常に存在させる（同期で消えても再登録）
   useEffect(() => {
@@ -517,6 +522,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
         }),
       removeMeal: (id) => patch((s) => ({ ...s, meals: s.meals.filter((m) => m.id !== id) })),
+      addMealMood: (mood) =>
+        patch((s) => {
+          const value = mood.trim()
+          if (!value || s.customMealMoods.some((x) => x.toLowerCase() === value.toLowerCase())) return s
+          return { ...s, customMealMoods: [...s.customMealMoods, value] }
+        }),
+      removeMealMood: (mood) =>
+        patch((s) => ({ ...s, customMealMoods: s.customMealMoods.filter((x) => x !== mood) })),
       setSchoolLunches: (items) =>
         patch((s) => {
           const map = new Map(s.meals.map((m) => [m.date, m]))
@@ -585,6 +598,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             recipes: Array.isArray(data.recipes) ? data.recipes : [],
             shopping: Array.isArray(data.shopping) ? data.shopping : [],
             meals: Array.isArray(data.meals) ? data.meals : [],
+            customMealMoods: Array.isArray(data.customMealMoods) ? data.customMealMoods : [],
             inventory: Array.isArray(data.inventory) ? data.inventory : [],
             family: Array.isArray(data.family) && data.family.length ? data.family : base.family,
             settings: { ...base.settings, ...(data.settings ?? {}) },
