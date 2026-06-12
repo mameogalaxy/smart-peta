@@ -53,11 +53,16 @@ export function demoScan(): ScanResult {
 }
 
 export function demoDinner(ctx: MealContext): MealSuggestion {
+  const method = ctx.cookingMethod || ['蒸す', '焼く', '煮る', 'オーブン'][counter++ % 4]
   const mainPool = ctx.availableRecipes.length
     ? ctx.availableRecipes
-    : ctx.mood === 'あっさり'
-      ? [{ title: '鮭と野菜の蒸し焼き', ingredients: ['生鮭 2切れ', 'キャベツ', 'しめじ', 'ポン酢'] }]
-      : [{ title: '豚の生姜焼き', ingredients: ['豚ロース 200g', '生姜', '玉ねぎ', '醤油', 'みりん'] }]
+    : method === '蒸す'
+      ? [{ title: '豚肉と野菜のせいろ蒸し', ingredients: ['豚薄切り肉 200g', 'キャベツ 1/4玉', 'にんじん 1/2本', 'ポン酢'] }]
+      : method === '煮る'
+        ? [{ title: '鶏肉と大根のやわらか煮', ingredients: ['鶏もも肉 250g', '大根 1/3本', '生姜', '醤油', 'みりん'] }]
+        : method === 'オーブン'
+          ? [{ title: '鮭と彩り野菜のオーブン焼き', ingredients: ['生鮭 2切れ', '玉ねぎ 1/2個', 'ピーマン 2個', 'オリーブ油'] }]
+          : [{ title: '鶏肉の香ばしグリル', ingredients: ['鶏もも肉 250g', '塩', 'こしょう', 'レモン'] }]
   const pick = mainPool[Math.floor(Math.random() * mainPool.length)]
   const dishes = (ctx.courses.length ? ctx.courses : ['main' as const]).map((course) => ({
     course,
@@ -79,7 +84,15 @@ export function demoDinner(ctx: MealContext): MealSuggestion {
     dishes,
     reason: `${ctx.mood ? `「${ctx.mood}」の気分に合わせ、` : ''}${fridge}給食「${ctx.schoolLunch || '不明'}」と被りにくい献立です。（デモ提案）`,
     nutritionAdvice: '主菜のたんぱく質と副菜の野菜を組み合わせています。主食・汁物を選ばなかった場合は、量や塩分に合わせて追加してください。',
-    recipeTitle: ctx.availableRecipes.length ? pick.title : undefined,
+    cookingMethod: method,
+    recipeTitle: pick.title,
+    recipeIngredients: pick.ingredients,
+    steps: [
+      '材料を食べやすい大きさに切り、必要な下味をつける。',
+      `${method}調理で中心まで火を通す。`,
+      '味を調え、器に盛りつける。',
+    ],
+    servings: '2人分',
     ingredients: [...new Set([...pick.ingredients, ...extraIngredients])],
   }
 }

@@ -123,6 +123,8 @@ export interface MealPlan {
   dinnerDishes?: MealDish[]
   /** 提案時に選んだ気分 */
   dinnerMood?: string
+  /** 採用した中心料理の調理法 */
+  dinnerCookingMethod?: string
   /** 栄養士視点のバランスコメント */
   nutritionNote?: string
   /** 使用したレシピID */

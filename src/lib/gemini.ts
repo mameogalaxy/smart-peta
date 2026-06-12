@@ -248,7 +248,11 @@ export interface MealSuggestion {
   dishes: MealDish[]
   reason: string
   nutritionAdvice: string
-  recipeTitle?: string
+  cookingMethod: string
+  recipeTitle: string
+  recipeIngredients: string[]
+  steps: string[]
+  servings: string
   ingredients: string[]
 }
 
@@ -269,10 +273,14 @@ const MEAL_SCHEMA = {
     },
     reason: { type: 'string' },
     nutritionAdvice: { type: 'string' },
+    cookingMethod: { type: 'string' },
     recipeTitle: { type: 'string' },
+    recipeIngredients: { type: 'array', items: { type: 'string' } },
+    steps: { type: 'array', items: { type: 'string' } },
+    servings: { type: 'string' },
     ingredients: { type: 'array', items: { type: 'string' } },
   },
-  required: ['dinner', 'dishes', 'reason', 'nutritionAdvice', 'ingredients'],
+  required: ['dinner', 'dishes', 'reason', 'nutritionAdvice', 'cookingMethod', 'recipeTitle', 'recipeIngredients', 'steps', 'servings', 'ingredients'],
 }
 
 export interface MealContext {
@@ -286,6 +294,10 @@ export interface MealContext {
   mood?: string
   /** 提案してほしい料理区分 */
   courses: MealCourse[]
+  /** 希望する中心料理の調理法。未設定はおまかせ */
+  cookingMethod?: string
+  /** 直近に採用した主菜の調理法 */
+  recentCookingMethods: string[]
 }
 
 /**
@@ -305,15 +317,16 @@ export async function suggestDinner(ctx: MealContext, settings: Settings): Promi
 Conditions (by priority):
 1. Match the requested mood: "${ctx.mood || 'おまかせ'}".
 2. Return exactly one dish for each requested course, and no unrequested courses. Requested courses: [${requestedCourses.map((course) => `${course}:${courseLabels[course]}`).join(', ')}].
-3. Use the fridge ingredients as much as possible to minimize extra shopping. Fridge: [${ctx.fridgeItems.join(', ') || 'unknown'}].
-4. Avoid overlapping the main dish/ingredients with today's school lunch: "${ctx.schoolLunch || 'unknown'}".
-5. Avoid repeating recent dinners: [${ctx.recentDinners.join(' / ') || 'none'}].
-6. Prefer the saved recipes below; otherwise suggest common Japanese home dishes.
-7. As a dietitian, assess protein, vegetables, carbohydrates, salt, and overall balance across the requested courses. If some courses are not requested, explain one concise optional addition that would improve balance.
+3. Cooking method for the main dish, or the most substantial requested dish if no main dish is requested: ${ctx.cookingMethod ? `use "${ctx.cookingMethod}"` : `choose a method different from recent methods [${ctx.recentCookingMethods.join(' / ') || 'none'}]`}. Rotate broadly among grilling, simmering, steaming, frying, stir-frying, oven cooking, dressing/mixing, and no-cook methods. Do NOT default to stir-frying.
+4. Use the fridge ingredients as much as possible to minimize extra shopping. Fridge: [${ctx.fridgeItems.join(', ') || 'unknown'}].
+5. Avoid overlapping the main dish/ingredients with today's school lunch: "${ctx.schoolLunch || 'unknown'}".
+6. Avoid repeating recent dinners: [${ctx.recentDinners.join(' / ') || 'none'}].
+7. Prefer the saved recipes below; otherwise suggest common Japanese home dishes.
+8. As a dietitian, assess protein, vegetables, carbohydrates, salt, and overall balance across the requested courses. If some courses are not requested, explain one concise optional addition that would improve balance.
 Saved recipes:
 ${recipeList}
 
-Return: "dinner" (a short menu summary joining all proposed dish names), "dishes" (array of objects with "course" and "name"), "reason" (1-2 sentences considering mood/fridge/lunch/recent dinners), "nutritionAdvice" (1-2 concise sentences from a dietitian), "recipeTitle" (saved recipe name if used), "ingredients" (deduplicated array of all ingredients needed for the entire menu). JSON only.`
+Return: "dinner" (a short menu summary joining all proposed dish names), "dishes" (array of objects with "course" and "name"), "reason" (1-2 sentences considering mood/method/fridge/lunch/recent dinners), "nutritionAdvice" (1-2 concise sentences from a dietitian), "cookingMethod" (short Japanese label for the main dish method), "recipeTitle" (the main dish, or the most substantial proposed dish if main is not requested), "recipeIngredients" (ingredients with quantities for that recipe only), "steps" (3-6 practical cooking steps for that recipe), "servings" (for example "2人分"), "ingredients" (deduplicated array of all ingredients needed for the entire menu). JSON only.`
 
   const raw = await generate([{ text: prompt }], settings, { schema: MEAL_SCHEMA, temperature: 0.8, light: true })
   const result = parseJson<MealSuggestion>(raw)

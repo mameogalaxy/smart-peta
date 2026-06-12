@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../lib/store'
 import { Card, Button, Field, inputClass, Spinner, EmptyState, Badge, Modal } from '../components/ui'
-import { MealIcon, SparkleIcon, CartIcon, TrashIcon, CameraIcon, PlusIcon, CloseIcon } from '../components/icons'
+import { MealIcon, SparkleIcon, CartIcon, TrashIcon, CameraIcon, PlusIcon, CloseIcon, CheckIcon } from '../components/icons'
 import { suggestDinner, scanLunchMenu, scanFridge, GeminiError, type MealSuggestion } from '../lib/gemini'
 import { demoDinner, demoLunchMenu, demoFridge } from '../lib/demo'
 import { addDaysISO, downscaleImage, fileToDataUrl, fileToScanData, formatJpDate, todayISO, uid } from '../lib/util'
@@ -9,6 +9,7 @@ import type { MealCourse, Recipe } from '../types'
 import { useConfirm } from '../lib/confirm'
 
 const DEFAULT_MOODS = ['おまかせ', 'ガッツリ', 'あっさり', '時短', '野菜多め']
+const COOKING_METHODS = ['おまかせ', '焼く', '煮る', '蒸す', '揚げる', '炒める', '和える', 'オーブン', '火を使わない']
 const COURSE_OPTIONS: { value: MealCourse; label: string }[] = [
   { value: 'main', label: '主菜' },
   { value: 'staple', label: '主食' },
@@ -42,6 +43,8 @@ export function Meals() {
   const [courses, setCourses] = useState<MealCourse[]>(['main', 'staple', 'side', 'soup'])
   const [moodModal, setMoodModal] = useState(false)
   const [newMood, setNewMood] = useState('')
+  const [cookingMethod, setCookingMethod] = useState('おまかせ')
+  const [recipeMsg, setRecipeMsg] = useState('')
 
   const meal = state.meals.find((m) => m.date === date)
   const schoolLunch = meal?.schoolLunch ?? ''
@@ -60,7 +63,8 @@ export function Meals() {
   useEffect(() => {
     setSuggestion(null)
     setError('')
-  }, [date, mood, courses])
+    setRecipeMsg('')
+  }, [date, mood, courses, cookingMethod])
 
   const recentDinners = useMemo(
     () =>
@@ -70,6 +74,15 @@ export function Meals() {
         .slice(0, 4)
         .map((m) => m.dinner!)
     ,
+    [state.meals, date],
+  )
+  const recentCookingMethods = useMemo(
+    () =>
+      [...state.meals]
+        .filter((m) => m.date < date && m.dinnerCookingMethod)
+        .sort((a, b) => b.date.localeCompare(a.date))
+        .slice(0, 4)
+        .map((m) => m.dinnerCookingMethod!),
     [state.meals, date],
   )
 
@@ -83,6 +96,7 @@ export function Meals() {
       dinner: meal?.dinner,
       dinnerDishes: meal?.dinnerDishes,
       dinnerMood: meal?.dinnerMood,
+      dinnerCookingMethod: meal?.dinnerCookingMethod,
       nutritionNote: meal?.nutritionNote,
       recipeIds: meal?.recipeIds ?? [],
       note: meal?.note,
@@ -169,15 +183,21 @@ export function Meals() {
   async function suggest() {
     setLoading(true)
     setError('')
+    setRecipeMsg('')
+    const previousSuggestion = suggestion
     setSuggestion(null)
     const ctx = {
       date,
       schoolLunch: schoolLunch || undefined,
-      recentDinners,
+      recentDinners: previousSuggestion ? [previousSuggestion.dinner, ...recentDinners] : recentDinners,
       availableRecipes: state.recipes.map((r) => ({ title: r.title, ingredients: r.ingredients })),
       fridgeItems: state.inventory.map((i) => i.name),
       mood: mood === 'おまかせ' ? undefined : mood,
       courses,
+      cookingMethod: cookingMethod === 'おまかせ' ? undefined : cookingMethod,
+      recentCookingMethods: previousSuggestion
+        ? [...new Set([previousSuggestion.cookingMethod, ...recentCookingMethods])]
+        : recentCookingMethods,
     }
     try {
       let res: MealSuggestion
@@ -209,6 +229,7 @@ export function Meals() {
       dinner: suggestion.dinner,
       dinnerDishes: suggestion.dishes,
       dinnerMood: mood,
+      dinnerCookingMethod: suggestion.cookingMethod,
       nutritionNote: suggestion.nutritionAdvice,
       recipeIds: meal?.recipeIds ?? [],
       note: suggestion.reason,
@@ -220,6 +241,25 @@ export function Meals() {
       )
     }
     setSuggestion(null)
+  }
+
+  function saveSuggestedRecipe() {
+    if (!suggestion) return
+    const exists = state.recipes.some((recipe) => recipe.title.trim().toLowerCase() === suggestion.recipeTitle.trim().toLowerCase())
+    if (exists) {
+      setRecipeMsg('同じ名前のレシピが保存済みです。')
+      return
+    }
+    store.addRecipe({
+      id: uid(),
+      title: suggestion.recipeTitle,
+      ingredients: suggestion.recipeIngredients,
+      steps: suggestion.steps,
+      servings: suggestion.servings,
+      tags: ['AI提案', suggestion.cookingMethod, ...(mood === 'おまかせ' ? [] : [mood])],
+      createdAt: Date.now(),
+    })
+    setRecipeMsg(`「${suggestion.recipeTitle}」を保存レシピに追加しました。`)
   }
 
   return (
@@ -414,6 +454,23 @@ export function Meals() {
           </div>
         </div>
 
+        <div>
+          <span className="mb-2 block text-sm font-semibold text-slate-600">中心料理の調理法</span>
+          <div className="flex flex-wrap gap-2">
+            {COOKING_METHODS.map((method) => (
+              <button
+                key={method}
+                type="button"
+                onClick={() => setCookingMethod(method)}
+                className={`rounded-full px-3 py-1.5 text-sm font-semibold ${cookingMethod === method ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-600'}`}
+              >
+                {method}
+              </button>
+            ))}
+          </div>
+          {cookingMethod === 'おまかせ' && <p className="mt-1.5 text-xs text-slate-400">直近の調理法を避け、焼く・煮る・蒸すなどから変化をつけます。</p>}
+        </div>
+
         <Button className="w-full" onClick={suggest} disabled={loading || courses.length === 0}>
           {loading ? <Spinner /> : <SparkleIcon width={18} height={18} />}
           {mood === 'おまかせ' ? '栄養士AIに献立を提案してもらう' : `「${mood}」の献立を提案してもらう`}
@@ -426,6 +483,7 @@ export function Meals() {
             </div>
             <div className="flex-1">
               {meal.dinnerMood && <p className="mb-1 text-xs font-bold text-red-500">{meal.dinnerMood}</p>}
+              {meal.dinnerCookingMethod && <Badge color="#d97706">{meal.dinnerCookingMethod}</Badge>}
               {meal.dinnerDishes?.length ? (
                 <div className="space-y-1">
                   {meal.dinnerDishes.map((dish) => (
@@ -448,6 +506,7 @@ export function Meals() {
                   dinner: undefined,
                   dinnerDishes: undefined,
                   dinnerMood: undefined,
+                  dinnerCookingMethod: undefined,
                   nutritionNote: undefined,
                   note: undefined,
                 })
@@ -464,6 +523,10 @@ export function Meals() {
         {suggestion && (
           <div className="animate-pop space-y-3 rounded-xl border border-brand-200 bg-brand-50/50 p-3">
             {usedDemo && <Badge color="#d97706">デモ提案</Badge>}
+            <div className="flex items-center gap-2">
+              <Badge color="#d97706">{suggestion.cookingMethod}</Badge>
+              <span className="text-xs font-semibold text-slate-500">{suggestion.servings}</span>
+            </div>
             <div>
               <div className="space-y-1.5">
                 {suggestion.dishes.map((dish) => (
@@ -485,6 +548,26 @@ export function Meals() {
                 <p className="text-sm text-slate-600">{suggestion.ingredients.join('、')}</p>
               </div>
             )}
+            <div className="rounded-lg bg-white/80 p-3">
+              <p className="text-sm font-bold text-slate-700">{suggestion.recipeTitle}の作り方</p>
+              <p className="mt-1 text-xs text-slate-500">{suggestion.recipeIngredients.join('、')}</p>
+              <ol className="mt-2 list-inside list-decimal space-y-1 text-sm text-slate-700">
+                {suggestion.steps.map((step, index) => <li key={index}>{step}</li>)}
+              </ol>
+              <Button
+                variant="soft"
+                className="mt-3 w-full"
+                onClick={saveSuggestedRecipe}
+                disabled={state.recipes.some((recipe) => recipe.title.trim().toLowerCase() === suggestion.recipeTitle.trim().toLowerCase())}
+              >
+                {state.recipes.some((recipe) => recipe.title.trim().toLowerCase() === suggestion.recipeTitle.trim().toLowerCase()) ? (
+                  <><CheckIcon width={17} height={17} /> 保存済み</>
+                ) : (
+                  <><PlusIcon width={17} height={17} /> 保存レシピに追加</>
+                )}
+              </Button>
+              {recipeMsg && <p className="mt-2 text-center text-xs font-semibold text-brand-700">{recipeMsg}</p>}
+            </div>
             <div className="flex gap-2">
               <Button variant="ghost" className="flex-1" onClick={suggest} disabled={loading}>
                 別の案
