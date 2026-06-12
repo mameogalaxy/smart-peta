@@ -15,6 +15,7 @@ import type {
   DocItem,
   FamilyMember,
   InventoryItem,
+  LunchMenuSheet,
   MealPlan,
   Recipe,
   Settings,
@@ -45,15 +46,20 @@ function resolveConfig(raw?: string): Record<string, unknown> | null {
 }
 
 /** クラウド同期する配列コレクション（画像は docs から除外して送る） */
-const SYNCED = ['docs', 'customDocCategories', 'hiddenDocCategoryIds', 'events', 'shopping', 'recipes', 'meals', 'customMealMoods', 'inventory', 'family'] as const
+const SYNCED = ['docs', 'customDocCategories', 'hiddenDocCategoryIds', 'events', 'shopping', 'recipes', 'meals', 'lunchMenuSheets', 'customMealMoods', 'inventory', 'family'] as const
 type SyncedKey = (typeof SYNCED)[number]
 
 export type CloudStatus = 'off' | 'connecting' | 'on' | 'error'
 
 function stripImages(col: SyncedKey, raw: unknown[]): unknown[] {
-  if (col !== 'docs') return raw
-  // 画像は items とは別（households/{hid}/data/img_{docId}）に同期するため、本文からは外す
-  return (raw as DocItem[]).map(({ image: _img, images: _imgs, ...rest }) => rest)
+  if (col === 'docs') {
+    // 画像は items とは別（households/{hid}/data/img_{docId}）に同期するため、本文からは外す
+    return (raw as DocItem[]).map(({ image: _img, images: _imgs, ...rest }) => rest)
+  }
+  if (col === 'lunchMenuSheets') {
+    return (raw as LunchMenuSheet[]).map(({ images: _images, ...rest }) => rest)
+  }
+  return raw
 }
 
 /** 書類の画像リスト（代表+複数ページ）を1つにまとめる */
@@ -100,6 +106,7 @@ function initialState(): AppState {
     recipes: [],
     shopping: [],
     meals: [],
+    lunchMenuSheets: [],
     customMealMoods: [],
     inventory: [],
     family: seedFamily(),
@@ -123,6 +130,7 @@ function load(): AppState {
       ...parsed,
       inventory: parsed.inventory ?? [],
       customMealMoods: parsed.customMealMoods ?? [],
+      lunchMenuSheets: parsed.lunchMenuSheets ?? [],
       customDocCategories: parsed.customDocCategories ?? [],
       hiddenDocCategoryIds: parsed.hiddenDocCategoryIds ?? [],
       settings,
@@ -160,6 +168,8 @@ interface StoreApi {
   // 献立
   upsertMeal: (m: MealPlan) => void
   removeMeal: (id: string) => void
+  addLunchMenuSheet: (sheet: LunchMenuSheet) => void
+  removeLunchMenuSheet: (id: string) => void
   addMealMood: (mood: string) => void
   removeMealMood: (mood: string) => void
   /** 給食献立表スキャン等から、日付ごとの給食を一括登録 */
@@ -203,8 +213,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const mergeCols = useRef<Set<string>>(new Set())
   /** クラウドから受信した書類画像（docId -> images）。ローカルに無い書類へ表示用に付与 */
   const remoteDocImages = useRef<Map<string, string[]>>(new Map())
+  /** 家族から共有された給食献立表画像（sheetId -> pages） */
+  const remoteLunchImages = useRef<Map<string, string[]>>(new Map())
   /** 各書類画像の最終同期シグネチャ（再送/エコー防止） */
   const imgPushed = useRef<Record<string, string>>({})
+  const lunchImgPushed = useRef<Record<string, string>>({})
   /** 家族から共有されたAI設定（APIキー・モデル）。自分のキーが無いときの補完に使う。 */
   const [cloudAI, setCloudAI] = useState<Partial<Settings>>({})
 
@@ -235,6 +248,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         return { ...s, docs: remote }
       }
+      if (col === 'lunchMenuSheets') {
+        const localById = new Map(s.lunchMenuSheets.map((sheet) => [sheet.id, sheet]))
+        const remote = (items as LunchMenuSheet[]).map((sheet) => {
+          const local = localById.get(sheet.id)
+          const remoteImages = remoteLunchImages.current.get(sheet.id)
+          const images = local?.images?.length ? local.images : remoteImages ?? []
+          if (remoteImages?.length && !local?.images?.length) lunchImgPushed.current[sheet.id] = imgSig(remoteImages)
+          return { ...sheet, images }
+        })
+        if (doMerge) {
+          const byId = new Map<string, LunchMenuSheet>(remote.map((sheet) => [sheet.id, sheet]))
+          for (const sheet of s.lunchMenuSheets) if (!byId.has(sheet.id)) byId.set(sheet.id, sheet)
+          return { ...s, lunchMenuSheets: [...byId.values()] }
+        }
+        return { ...s, lunchMenuSheets: remote }
+      }
       if (col === 'hiddenDocCategoryIds' || col === 'customMealMoods') {
         const remote = items.filter((x): x is string => typeof x === 'string')
         const local = col === 'hiddenDocCategoryIds' ? s.hiddenDocCategoryIds : s.customMealMoods
@@ -262,7 +291,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setCloud({ status: 'off', error: '' })
       setCloudAI({})
       remoteDocImages.current = new Map()
+      remoteLunchImages.current = new Map()
       imgPushed.current = {}
+      lunchImgPushed.current = {}
       return
     }
     let cancelled = false
@@ -292,12 +323,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             dataCol,
             (snap) => {
               const imgs = new Map<string, string[]>()
+              const lunchImgs = new Map<string, string[]>()
               snap.forEach((docu) => {
+                if (docu.id.startsWith('lunchimg_')) {
+                  const a = (docu.data() as { images?: string[] }).images
+                  if (a && a.length) lunchImgs.set(docu.id.slice(9), a)
+                  return
+                }
                 if (!docu.id.startsWith('img_')) return
                 const a = (docu.data() as { images?: string[] }).images
                 if (a && a.length) imgs.set(docu.id.slice(4), a)
               })
               remoteDocImages.current = imgs
+              remoteLunchImages.current = lunchImgs
               setState((s) => {
                 let changed = false
                 const docs = s.docs.map((d) => {
@@ -308,7 +346,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                   changed = true
                   return { ...d, image: r[0], images: r.length > 1 ? r : undefined }
                 })
-                return changed ? { ...s, docs } : s
+                const lunchMenuSheets = s.lunchMenuSheets.map((sheet) => {
+                  if (sheet.images?.length) return sheet
+                  const images = lunchImgs.get(sheet.id)
+                  if (!images?.length) return sheet
+                  lunchImgPushed.current[sheet.id] = imgSig(images)
+                  changed = true
+                  return { ...sheet, images }
+                })
+                return changed ? { ...s, docs, lunchMenuSheets } : s
               })
             },
             () => {},
@@ -341,7 +387,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       unsubs.forEach((u) => u())
       lastSync.current = {}
       remoteDocImages.current = new Map()
+      remoteLunchImages.current = new Map()
       imgPushed.current = {}
+      lunchImgPushed.current = {}
       setCloudAI({})
     }
   }, [cfgStr, hid, applyRemote])
@@ -377,6 +425,36 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       cancelled = true
     }
   }, [cloud.status, hid, state.docs])
+
+  // 送信：給食献立表のページ画像を世帯へ共有
+  useEffect(() => {
+    if (cloud.status !== 'on' || !hid) return
+    let cancelled = false
+    ;(async () => {
+      for (const sheet of state.lunchMenuSheets) {
+        if (!sheet.images.length) continue
+        const sig = imgSig(sheet.images)
+        if (lunchImgPushed.current[sheet.id] === sig) continue
+        lunchImgPushed.current[sheet.id] = sig
+        try {
+          const compressed = await Promise.all(sheet.images.map((image) => compressForShare(image)))
+          if (cancelled) return
+          await setDoc(fsDoc(getDb(), 'households', hid, 'data', `lunchimg_${sheet.id}`), { images: compressed })
+        } catch {
+          // 容量超過/オフライン時もローカルでは閲覧可能
+        }
+      }
+      for (const id of Object.keys(lunchImgPushed.current)) {
+        if (!state.lunchMenuSheets.some((sheet) => sheet.id === id)) {
+          delete lunchImgPushed.current[id]
+          deleteDoc(fsDoc(getDb(), 'households', hid, 'data', `lunchimg_${id}`)).catch(() => {})
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [cloud.status, hid, state.lunchMenuSheets])
 
   // 送信：APIキー・モデルを家族に共有（shareAiWithFamily が ON のときだけ書き込む）
   useEffect(() => {
@@ -418,7 +496,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setDoc(fsDoc(getDb(), 'households', hid, 'data', col), { items: JSON.parse(ser) }).catch(() => {})
       }
     }
-  }, [cloud.status, hid, state.docs, state.customDocCategories, state.hiddenDocCategoryIds, state.events, state.shopping, state.recipes, state.meals, state.customMealMoods, state.inventory, state.family])
+  }, [cloud.status, hid, state.docs, state.customDocCategories, state.hiddenDocCategoryIds, state.events, state.shopping, state.recipes, state.meals, state.lunchMenuSheets, state.customMealMoods, state.inventory, state.family])
 
   // 自分(この端末の利用者)を家族リストに常に存在させる（同期で消えても再登録）
   useEffect(() => {
@@ -522,6 +600,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
         }),
       removeMeal: (id) => patch((s) => ({ ...s, meals: s.meals.filter((m) => m.id !== id) })),
+      addLunchMenuSheet: (sheet) => patch((s) => ({ ...s, lunchMenuSheets: [sheet, ...s.lunchMenuSheets] })),
+      removeLunchMenuSheet: (id) => patch((s) => ({ ...s, lunchMenuSheets: s.lunchMenuSheets.filter((sheet) => sheet.id !== id) })),
       addMealMood: (mood) =>
         patch((s) => {
           const value = mood.trim()
@@ -598,6 +678,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             recipes: Array.isArray(data.recipes) ? data.recipes : [],
             shopping: Array.isArray(data.shopping) ? data.shopping : [],
             meals: Array.isArray(data.meals) ? data.meals : [],
+            lunchMenuSheets: Array.isArray(data.lunchMenuSheets) ? data.lunchMenuSheets : [],
             customMealMoods: Array.isArray(data.customMealMoods) ? data.customMealMoods : [],
             inventory: Array.isArray(data.inventory) ? data.inventory : [],
             family: Array.isArray(data.family) && data.family.length ? data.family : base.family,

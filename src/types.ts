@@ -133,6 +133,18 @@ export interface MealPlan {
   createdAt: number
 }
 
+/** 読み取り元として保存した学校給食の月間献立表 */
+export interface LunchMenuSheet {
+  id: string
+  title: string
+  /** PDFはページごとに画像化して保存 */
+  images: string[]
+  startDate?: string
+  endDate?: string
+  itemCount: number
+  createdAt: number
+}
+
 /** 家族メンバー */
 export interface FamilyMember {
   id: string
@@ -198,6 +210,8 @@ export interface AppState {
   recipes: Recipe[]
   shopping: ShoppingItem[]
   meals: MealPlan[]
+  /** 後から見返せる給食献立表の画像・PDFページ */
+  lunchMenuSheets: LunchMenuSheet[]
   /** 家族で共有する追加の献立気分 */
   customMealMoods: string[]
   /** 冷蔵庫の中身（在庫） */

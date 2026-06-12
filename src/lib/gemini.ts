@@ -319,7 +319,7 @@ Conditions (by priority):
 2. Return exactly one dish for each requested course, and no unrequested courses. Requested courses: [${requestedCourses.map((course) => `${course}:${courseLabels[course]}`).join(', ')}].
 3. Cooking method for the main dish, or the most substantial requested dish if no main dish is requested: ${ctx.cookingMethod ? `use "${ctx.cookingMethod}"` : `choose a method different from recent methods [${ctx.recentCookingMethods.join(' / ') || 'none'}]`}. Rotate broadly among grilling, simmering, steaming, frying, stir-frying, oven cooking, dressing/mixing, and no-cook methods. Do NOT default to stir-frying.
 4. Use the fridge ingredients as much as possible to minimize extra shopping. Fridge: [${ctx.fridgeItems.join(', ') || 'unknown'}].
-5. Avoid overlapping the main dish/ingredients with today's school lunch: "${ctx.schoolLunch || 'unknown'}".
+5. The school lunch on this exact date is "${ctx.schoolLunch || 'unknown'}". Do not repeat its named dishes, main protein, dominant ingredients, or a very similar flavor/cooking style at dinner.
 6. Avoid repeating recent dinners: [${ctx.recentDinners.join(' / ') || 'none'}].
 7. Prefer the saved recipes below; otherwise suggest common Japanese home dishes.
 8. As a dietitian, assess protein, vegetables, carbohydrates, salt, and overall balance across the requested courses. If some courses are not requested, explain one concise optional addition that would improve balance.
@@ -405,7 +405,8 @@ export async function scanLunchMenu(images: string | string[], settings: Setting
 1. Read each date's lunch menu${list.length > 1 ? ' across all pages' : ''}.
 2. "items": list of { date: "YYYY-MM-DD", menu: "main dish/staple/soup, comma-separated, concise (Japanese)" } in date order.
 3. Prefer the year/month printed on the sheet; otherwise infer from today (${today}).
-4. Exclude weekends and "no lunch" days. Merge duplicate dates.`
+4. Read the entire printed month exhaustively, checking every calendar row and every weekday date. A normal monthly sheet may contain about 18-23 lunch days.
+5. Exclude weekends, holidays, and "no lunch" days. Merge duplicate dates and do not invent unreadable menus.`
 
   const parts: { text?: string; inline_data?: { mime_type: string; data: string } }[] = [{ text: prompt }]
   for (const img of list) {

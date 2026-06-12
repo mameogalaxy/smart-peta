@@ -7,6 +7,9 @@ import { demoDinner, demoLunchMenu, demoFridge } from '../lib/demo'
 import { addDaysISO, downscaleImage, fileToDataUrl, fileToScanData, formatJpDate, todayISO, uid } from '../lib/util'
 import type { MealCourse, Recipe } from '../types'
 import { useConfirm } from '../lib/confirm'
+import { renderPdfPages } from '../lib/pdf'
+import { ImageLightbox } from '../components/ImageLightbox'
+import type { LunchMenuSheet } from '../types'
 
 const DEFAULT_MOODS = ['おまかせ', 'ガッツリ', 'あっさり', '時短', '野菜多め']
 const COOKING_METHODS = ['おまかせ', '焼く', '煮る', '蒸す', '揚げる', '炒める', '和える', 'オーブン', '火を使わない']
@@ -35,6 +38,8 @@ export function Meals() {
   const lunchRef = useRef<HTMLInputElement>(null)
   const [scanningLunch, setScanningLunch] = useState(false)
   const [lunchMsg, setLunchMsg] = useState('')
+  const [lunchSheetView, setLunchSheetView] = useState<LunchMenuSheet | null>(null)
+  const [lunchLightbox, setLunchLightbox] = useState<string | null>(null)
   const fridgeRef = useRef<HTMLInputElement>(null)
   const [scanningFridge, setScanningFridge] = useState(false)
   const [fridgeMsg, setFridgeMsg] = useState('')
@@ -108,19 +113,46 @@ export function Meals() {
     setLunchMsg('')
     setScanningLunch(true)
     try {
-      const imgs: string[] = []
-      for (const f of Array.from(files)) imgs.push(await fileToScanData(f))
+      const scanInputs: string[] = []
+      const savedPages: string[] = []
+      for (const file of Array.from(files)) {
+        if (file.type === 'application/pdf') {
+          scanInputs.push(await fileToScanData(file))
+          const rendered = await renderPdfPages(file, 31)
+          savedPages.push(...rendered.pages)
+        } else {
+          const raw = await fileToDataUrl(file)
+          const image = await downscaleImage(raw, 1400, 0.82).catch(() => raw)
+          scanInputs.push(image)
+          savedPages.push(image)
+        }
+      }
       let res
       try {
-        res = await scanLunchMenu(imgs, aiSettings, todayISO())
+        res = await scanLunchMenu(scanInputs, aiSettings, todayISO())
       } catch (e) {
         if (e instanceof GeminiError && e.message === 'NO_KEY') res = demoLunchMenu()
         else throw e
       }
       store.setSchoolLunches(res.items)
+      const dates = res.items.map((item) => item.date).filter(Boolean).sort()
+      const startDate = dates[0]
+      const endDate = dates[dates.length - 1]
+      const title = startDate
+        ? `${Number(startDate.slice(0, 4))}年${Number(startDate.slice(5, 7))}月 給食献立表`
+        : `給食献立表 ${formatJpDate(todayISO())}`
+      store.addLunchMenuSheet({
+        id: uid(),
+        title,
+        images: savedPages,
+        startDate,
+        endDate,
+        itemCount: res.items.length,
+        createdAt: Date.now(),
+      })
       const todayItem = res.items.find((i) => i.date === todayISO())
       setLunchMsg(
-        `${res.items.length}日分の給食を登録しました。` + (todayItem ? `今日は「${todayItem.menu}」です。` : ''),
+        `${res.items.length}日分の給食と献立表${savedPages.length}ページを登録しました。` + (todayItem ? `今日は「${todayItem.menu}」です。` : ''),
       )
     } catch (e) {
       setLunchMsg(e instanceof Error ? e.message : '読み取りに失敗しました。')
@@ -290,7 +322,7 @@ export function Meals() {
             }}
           />
           <Button variant="soft" onClick={() => lunchRef.current?.click()} disabled={scanningLunch}>
-            {scanningLunch ? <Spinner /> : <CameraIcon width={18} height={18} />} 献立表を読み取る
+            {scanningLunch ? <Spinner /> : <CameraIcon width={18} height={18} />} 画像・PDFを登録
           </Button>
         </div>
 
@@ -306,8 +338,53 @@ export function Meals() {
           </div>
         ) : (
           <p className="text-xs text-slate-400">
-            献立表を撮影、または<strong>PDF</strong>を選ぶと、日付ごとの給食を一括登録できます。今日の給食がすぐ分かり、夕食提案の被り回避にも使われます。
+            1か月分の献立表を撮影、または<strong>画像・PDFを複数選択</strong>すると、日付ごとの給食を一括登録できます。元の献立表も保存され、後から見返せます。
           </p>
+        )}
+
+        {state.lunchMenuSheets.length > 0 && (
+          <div>
+            <p className="mb-2 text-sm font-semibold text-slate-600">保存した献立表</p>
+            <div className="space-y-2">
+              {state.lunchMenuSheets.map((sheet) => (
+                <div key={sheet.id} className="flex items-center gap-3 rounded-xl bg-slate-50 p-2.5 ring-1 ring-slate-200">
+                  <button type="button" onClick={() => setLunchSheetView(sheet)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                    {sheet.images[0] ? (
+                      <img src={sheet.images[0]} alt="" className="h-14 w-11 shrink-0 rounded object-cover ring-1 ring-slate-200" />
+                    ) : (
+                      <div className="grid h-14 w-11 shrink-0 place-items-center rounded bg-white text-slate-300 ring-1 ring-slate-200">
+                        <MealIcon width={20} height={20} />
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold text-slate-700">{sheet.title}</p>
+                      <p className="text-xs text-slate-400">{sheet.itemCount}日分・{sheet.images.length || '同期待ち'}ページ</p>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`${sheet.title}を削除`}
+                    onClick={async () => {
+                      if (
+                        await confirm({
+                          title: '献立表を削除',
+                          message: `「${sheet.title}」の保存画像を削除しますか？ 日付ごとに登録済みの給食内容は残ります。`,
+                          confirmLabel: '削除',
+                          danger: true,
+                        })
+                      ) {
+                        store.removeLunchMenuSheet(sheet.id)
+                        if (lunchSheetView?.id === sheet.id) setLunchSheetView(null)
+                      }
+                    }}
+                    className="p-2 text-slate-400 active:text-red-500"
+                  >
+                    <TrashIcon width={18} height={18} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
 
         <Field label="給食メモ（手入力・修正）" hint="献立提案時、給食と主菜・食材が被らないようAIが考慮します。">
@@ -706,6 +783,40 @@ export function Meals() {
           )}
         </div>
       </Modal>
+
+      <Modal open={!!lunchSheetView} onClose={() => setLunchSheetView(null)} title={lunchSheetView?.title}>
+        {lunchSheetView && (
+          <div className="space-y-3">
+            <p className="text-xs text-slate-500">
+              {lunchSheetView.startDate && lunchSheetView.endDate
+                ? `${formatJpDate(lunchSheetView.startDate)}〜${formatJpDate(lunchSheetView.endDate)}・${lunchSheetView.itemCount}日分`
+                : `${lunchSheetView.itemCount}日分`}
+            </p>
+            {lunchSheetView.images.length ? (
+              <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2">
+                {lunchSheetView.images.map((image, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    onClick={() => setLunchLightbox(image)}
+                    className="relative w-full shrink-0 snap-center"
+                  >
+                    <img src={image} alt={`${lunchSheetView.title} ${index + 1}ページ`} className="max-h-[65vh] w-full rounded-xl object-contain ring-1 ring-slate-200" />
+                    <span className="absolute left-2 top-2 rounded-full bg-slate-900/60 px-2 py-1 text-xs font-bold text-white">
+                      {index + 1}/{lunchSheetView.images.length}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-400">画像を同期しています。</p>
+            )}
+            <p className="text-center text-xs text-slate-400">左右スワイプでページ切替・タップで拡大</p>
+          </div>
+        )}
+      </Modal>
+
+      <ImageLightbox src={lunchLightbox} onClose={() => setLunchLightbox(null)} />
     </div>
   )
 }
