@@ -5,9 +5,9 @@ import { Card, Badge, EmptyState, Button, Field, Modal, Spinner, inputClass } fr
 import { QrModal } from '../components/QrModal'
 import { ImageLightbox } from '../components/ImageLightbox'
 import { allDocCategories, DOC_CATEGORIES, findDocCategory, type DocCategory, type DocItem } from '../types'
-import { formatJpDate, fileToDataUrl, downscaleImage, isPdfDataUrl, todayISO, uid } from '../lib/util'
+import { formatJpDate, fileToDataUrl, downscaleImage, isPdfDataUrl, saveImagesToDevice, todayISO, uid } from '../lib/util'
 import { scanDocument, GeminiError } from '../lib/gemini'
-import { CameraIcon, CheckIcon, DocIcon, GridIcon, PlusIcon, PrinterIcon, QrIcon, SparkleIcon, TrashIcon, UsersIcon } from '../components/icons'
+import { CameraIcon, CheckIcon, DocIcon, DownloadIcon, GridIcon, PlusIcon, PrinterIcon, QrIcon, SparkleIcon, TrashIcon, UsersIcon } from '../components/icons'
 import { CategoryIcon } from '../components/CategoryIcon'
 import { extractDates } from '../lib/classify'
 import { useConfirm } from '../lib/confirm'
@@ -38,6 +38,7 @@ export function Documents() {
   const [showOcr, setShowOcr] = useState(false)
   const [reanalyzing, setReanalyzing] = useState(false)
   const [reanalyzeMsg, setReanalyzeMsg] = useState('')
+  const [savingImages, setSavingImages] = useState(false)
   const detailFileRef = useRef<HTMLInputElement>(null)
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState('')
@@ -441,6 +442,22 @@ export function Documents() {
                       ＋ 写真・PDFを追加
                     </button>
                   </div>
+                  <Button
+                    variant="soft"
+                    className="mt-2 w-full"
+                    disabled={savingImages}
+                    onClick={async () => {
+                      setSavingImages(true)
+                      try {
+                        await saveImagesToDevice(imgs, `smartpita-doc-${detail.id}`)
+                      } finally {
+                        setSavingImages(false)
+                      }
+                    }}
+                  >
+                    <DownloadIcon width={18} height={18} />
+                    {savingImages ? '保存中…' : imgs.length > 1 ? `写真をまとめて保存（${imgs.length}枚）` : '写真を保存'}
+                  </Button>
                   <Button
                     variant="soft"
                     className="mt-2 w-full"

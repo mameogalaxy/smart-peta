@@ -105,6 +105,13 @@ export const SettingsIcon = (p: P) => (
   </svg>
 )
 
+export const DownloadIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M12 3v12M7.5 10.5 12 15l4.5-4.5" />
+    <path d="M4 20h16" />
+  </svg>
+)
+
 export const BellIcon = (p: P) => (
   <svg {...base(p)}>
     <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />

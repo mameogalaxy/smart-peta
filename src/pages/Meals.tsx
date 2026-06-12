@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../lib/store'
 import { Card, Button, Field, inputClass, Spinner, EmptyState, Badge, Modal } from '../components/ui'
-import { MealIcon, SparkleIcon, CartIcon, TrashIcon, CameraIcon, PlusIcon, CloseIcon, CheckIcon } from '../components/icons'
+import { MealIcon, SparkleIcon, CartIcon, TrashIcon, CameraIcon, PlusIcon, CloseIcon, CheckIcon, DownloadIcon } from '../components/icons'
 import { suggestDinner, scanLunchMenu, scanFridge, GeminiError, type MealSuggestion } from '../lib/gemini'
 import { demoDinner, demoLunchMenu, demoFridge } from '../lib/demo'
-import { addDaysISO, downscaleImage, fileToDataUrl, fileToScanData, formatJpDate, todayISO, uid } from '../lib/util'
+import { addDaysISO, downscaleImage, fileToDataUrl, fileToScanData, formatJpDate, saveImagesToDevice, todayISO, uid } from '../lib/util'
 import type { MealCourse, Recipe } from '../types'
 import { useConfirm } from '../lib/confirm'
 import { renderPdfPages } from '../lib/pdf'
@@ -40,6 +40,7 @@ export function Meals() {
   const [lunchMsg, setLunchMsg] = useState('')
   const [lunchSheetView, setLunchSheetView] = useState<LunchMenuSheet | null>(null)
   const [lunchLightbox, setLunchLightbox] = useState<string | null>(null)
+  const [savingLunchImages, setSavingLunchImages] = useState(false)
   const fridgeRef = useRef<HTMLInputElement>(null)
   const [scanningFridge, setScanningFridge] = useState(false)
   const [fridgeMsg, setFridgeMsg] = useState('')
@@ -812,6 +813,24 @@ export function Meals() {
               <p className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-400">画像を同期しています。</p>
             )}
             <p className="text-center text-xs text-slate-400">左右スワイプでページ切替・タップで拡大</p>
+            {lunchSheetView.images.length > 0 && (
+              <Button
+                variant="soft"
+                className="w-full"
+                disabled={savingLunchImages}
+                onClick={async () => {
+                  setSavingLunchImages(true)
+                  try {
+                    await saveImagesToDevice(lunchSheetView.images, `smartpita-lunch-${lunchSheetView.id}`)
+                  } finally {
+                    setSavingLunchImages(false)
+                  }
+                }}
+              >
+                <DownloadIcon width={18} height={18} />
+                {savingLunchImages ? '保存中…' : `献立表をまとめて保存（${lunchSheetView.images.length}枚）`}
+              </Button>
+            )}
           </div>
         )}
       </Modal>

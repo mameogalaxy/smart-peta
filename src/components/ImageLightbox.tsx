@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { CloseIcon } from './icons'
+import { CloseIcon, DownloadIcon } from './icons'
+import { saveImagesToDevice } from '../lib/util'
 
 type Point = { x: number; y: number }
 type Transform = { scale: number; x: number; y: number }
@@ -32,6 +33,7 @@ export function ImageLightbox({ src, onClose }: { src: string | null; onClose: (
   } | null>(null)
   const pan = useRef<{ pointerId: number; point: Point; x: number; y: number } | null>(null)
   const lastTap = useRef(0)
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     setTransform({ scale: 1, x: 0, y: 0 })
@@ -39,6 +41,7 @@ export function ImageLightbox({ src, onClose }: { src: string | null; onClose: (
     gesture.current = null
     pan.current = null
     lastTap.current = 0
+    setSaving(false)
   }, [src])
 
   if (!src) return null
@@ -119,7 +122,22 @@ export function ImageLightbox({ src, onClose }: { src: string | null; onClose: (
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-black/95" role="dialog" aria-modal="true">
-      <div className="flex justify-end p-3">
+      <div className="flex items-center justify-between p-3">
+        <button
+          type="button"
+          disabled={saving}
+          onClick={async () => {
+            setSaving(true)
+            try {
+              await saveImagesToDevice([src], 'smartpita-image')
+            } finally {
+              setSaving(false)
+            }
+          }}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+        >
+          <DownloadIcon width={18} height={18} /> {saving ? '保存中…' : '画像を保存'}
+        </button>
         <button onClick={onClose} className="rounded-full bg-white/15 p-2 text-white" aria-label="閉じる">
           <CloseIcon width={22} height={22} />
         </button>
