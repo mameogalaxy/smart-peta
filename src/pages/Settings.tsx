@@ -62,7 +62,7 @@ export function Settings() {
       }))
     )
       return
-    setBackupMsg(importData(text) ? '復元しました。' : '復元に失敗しました（ファイル形式をご確認ください）。')
+    setBackupMsg(importData(text) ? '復元して、この端末とクラウドの保存内容を更新しました。' : '復元に失敗しました（ファイル形式または端末の空き容量をご確認ください）。')
   }
   const s = state.settings
   const [showKey, setShowKey] = useState(false)

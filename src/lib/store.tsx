@@ -209,6 +209,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [cloud, setCloud] = useState<{ status: CloudStatus; error: string }>({ status: 'off', error: '' })
   /** 直近に同期した各コレクションの内容（エコー防止用） */
   const lastSync = useRef<Record<string, string>>({})
+  /** バックアップ復元直後、復元内容がクラウドへ反映されるまで古い受信で上書きさせない */
+  const backupRestoreTargets = useRef<Partial<Record<SyncedKey, string>>>({})
   /** 参加直後、最初の受信でローカルの内容を世帯にマージする対象コレクション（データ消失防止） */
   const mergeCols = useRef<Set<string>>(new Set())
   /** クラウドから受信した書類画像（docId -> images）。ローカルに無い書類へ表示用に付与 */
@@ -222,11 +224,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [cloudAI, setCloudAI] = useState<Partial<Settings>>({})
 
   const applyRemote = useCallback((col: SyncedKey, items: unknown[]) => {
+    const incoming = JSON.stringify(items)
+    const restoreTarget = backupRestoreTargets.current[col]
+    if (restoreTarget !== undefined) {
+      if (incoming !== restoreTarget) {
+        // 復元前のクラウド状態は採用しない。同期effectを再実行して復元内容をアップロードする。
+        lastSync.current[col] = '__backup_restore_pending__'
+        setState((s) => ({ ...s }))
+        return
+      }
+      delete backupRestoreTargets.current[col]
+    }
     // 参加直後の初回受信だけはローカルを世帯へマージ（既存の予定などが消えないように）
     const doMerge = mergeCols.current.has(col)
     if (doMerge) mergeCols.current.delete(col)
     // lastSync は「受信した世帯の内容」を記録。マージ時は state がそれと変わるので送信effectが発火→マージ結果をアップロード
-    lastSync.current[col] = JSON.stringify(items)
+    lastSync.current[col] = incoming
     setState((s) => {
       if (col === 'docs') {
         const localById = new Map(s.docs.map((d) => [d.id, d]))
@@ -491,6 +504,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const items = stripImages(col, state[col] as unknown[])
       const ser = JSON.stringify(items)
       if (ser !== lastSync.current[col]) {
+        if (backupRestoreTargets.current[col] !== undefined) backupRestoreTargets.current[col] = ser
         lastSync.current[col] = ser
         // JSON.parse(ser) で undefined フィールドを除去（Firestoreは undefined 不可）
         setDoc(fsDoc(getDb(), 'households', hid, 'data', col), { items: JSON.parse(ser) }).catch(() => {})
@@ -684,8 +698,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             family: Array.isArray(data.family) && data.family.length ? data.family : base.family,
             settings: { ...base.settings, ...(data.settings ?? {}) },
           }
-          lastSync.current = {}
+          // effectを待たずに端末へ保存する。容量不足などで保存できない場合は復元成功にしない。
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+
+          const restoreTargets: Partial<Record<SyncedKey, string>> = {}
+          for (const col of SYNCED) {
+            const items = stripImages(col, next[col] as unknown[])
+            restoreTargets[col] = JSON.stringify(items)
+            lastSync.current[col] = '__backup_restore_pending__'
+          }
+          backupRestoreTargets.current = restoreTargets
+          mergeCols.current.clear()
           imgPushed.current = {}
+          lunchImgPushed.current = {}
           setState(next)
           return true
         } catch {
@@ -709,6 +734,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         for (const col of SYNCED) {
           const items = stripImages(col, state[col] as unknown[])
           const ser = JSON.stringify(items)
+          if (backupRestoreTargets.current[col] !== undefined) backupRestoreTargets.current[col] = ser
           lastSync.current[col] = ser
           await setDoc(fsDoc(getDb(), 'households', newHid, 'data', col), { items: JSON.parse(ser) })
         }

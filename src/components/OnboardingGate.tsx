@@ -67,7 +67,7 @@ export function OnboardingGate() {
   async function onRestore(file: File) {
     const text = await file.text().catch(() => '')
     if (text && importData(text)) {
-      setJoinMsg('バックアップから復元しました。')
+      setJoinMsg('バックアップから復元し、この端末の保存内容を更新しました。')
     } else {
       setJoinMsg('復元に失敗しました（ファイル形式をご確認ください）。')
     }
