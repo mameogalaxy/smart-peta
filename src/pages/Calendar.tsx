@@ -868,9 +868,14 @@ function AddEventModal({
             </div>
           </div>
         )}
-        <label className="flex items-center gap-2 text-sm font-semibold text-slate-600">
-          <input type="checkbox" checked={remind} onChange={(e) => setRemind(e.target.checked)} className="h-5 w-5 accent-brand-500" />
-          家族にリマインダー通知する
+        <label className="flex items-start gap-2 text-sm font-semibold text-slate-600">
+          <input type="checkbox" checked={remind} onChange={(e) => setRemind(e.target.checked)} className="mt-0.5 h-5 w-5 accent-brand-500" />
+          <span>
+            リマインダーの印を付ける
+            <span className="mt-0.5 block text-[11px] font-normal text-slate-400">
+              一覧にベル印が付きます。実際の通知は各予定の「通知」からカレンダーに追加してください。
+            </span>
+          </span>
         </label>
         <Button
           className="w-full"
