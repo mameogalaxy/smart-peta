@@ -91,6 +91,14 @@ export function Meals() {
         .map((m) => m.dinnerCookingMethod!),
     [state.meals, date],
   )
+  const orderedLunchMenuSheets = useMemo(() => {
+    const selectedMonth = date.slice(0, 7)
+    return [...state.lunchMenuSheets].sort((a, b) => {
+      const aMatches = a.startDate?.startsWith(selectedMonth) ? 1 : 0
+      const bMatches = b.startDate?.startsWith(selectedMonth) ? 1 : 0
+      return bMatches - aMatches || b.createdAt - a.createdAt
+    })
+  }, [state.lunchMenuSheets, date])
 
   function setSchoolLunch(v: string) {
     store.upsertMeal({
@@ -343,50 +351,78 @@ export function Meals() {
           </p>
         )}
 
-        {state.lunchMenuSheets.length > 0 && (
-          <div>
-            <p className="mb-2 text-sm font-semibold text-slate-600">保存した献立表</p>
-            <div className="space-y-2">
-              {state.lunchMenuSheets.map((sheet) => (
-                <div key={sheet.id} className="flex items-center gap-3 rounded-xl bg-slate-50 p-2.5 ring-1 ring-slate-200">
-                  <button type="button" onClick={() => setLunchSheetView(sheet)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                    {sheet.images[0] ? (
-                      <img src={sheet.images[0]} alt="" className="h-14 w-11 shrink-0 rounded object-cover ring-1 ring-slate-200" />
-                    ) : (
-                      <div className="grid h-14 w-11 shrink-0 place-items-center rounded bg-white text-slate-300 ring-1 ring-slate-200">
-                        <MealIcon width={20} height={20} />
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-1">
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-sm font-semibold text-slate-600">登録した画像・PDF</p>
+            {orderedLunchMenuSheets.length > 0 && <span className="text-xs text-slate-400">{orderedLunchMenuSheets.length}件</span>}
+          </div>
+          {orderedLunchMenuSheets.length > 0 ? (
+            <div className="space-y-3">
+              {orderedLunchMenuSheets.map((sheet) => (
+                <div key={sheet.id} className="overflow-hidden rounded-xl bg-slate-50 ring-1 ring-slate-200">
+                  <div className="flex items-center gap-2 px-3 py-2.5">
+                    <button type="button" onClick={() => setLunchSheetView(sheet)} className="min-w-0 flex-1 text-left">
                       <p className="truncate text-sm font-bold text-slate-700">{sheet.title}</p>
                       <p className="text-xs text-slate-400">{sheet.itemCount}日分・{sheet.images.length || '同期待ち'}ページ</p>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`${sheet.title}を削除`}
+                      onClick={async () => {
+                        if (
+                          await confirm({
+                            title: '献立表を削除',
+                            message: `「${sheet.title}」の保存画像を削除しますか？ 日付ごとに登録済みの給食内容は残ります。`,
+                            confirmLabel: '削除',
+                            danger: true,
+                          })
+                        ) {
+                          store.removeLunchMenuSheet(sheet.id)
+                          if (lunchSheetView?.id === sheet.id) setLunchSheetView(null)
+                        }
+                      }}
+                      className="p-2 text-slate-400 active:text-red-500"
+                    >
+                      <TrashIcon width={18} height={18} />
+                    </button>
+                  </div>
+                  {sheet.images.length > 0 ? (
+                    <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto border-t border-slate-200 bg-white p-2">
+                      {sheet.images.map((image, index) => (
+                        <button
+                          key={index}
+                          type="button"
+                          onClick={() => setLunchLightbox(image)}
+                          className="relative w-[88%] shrink-0 snap-center"
+                        >
+                          <img
+                            src={image}
+                            alt={`${sheet.title} ${index + 1}ページ`}
+                            className="h-64 w-full rounded-lg bg-slate-50 object-contain"
+                          />
+                          <span className="absolute bottom-2 right-2 rounded-full bg-slate-900/65 px-2 py-1 text-[11px] font-bold text-white">
+                            {index + 1}/{sheet.images.length}
+                          </span>
+                        </button>
+                      ))}
                     </div>
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`${sheet.title}を削除`}
-                    onClick={async () => {
-                      if (
-                        await confirm({
-                          title: '献立表を削除',
-                          message: `「${sheet.title}」の保存画像を削除しますか？ 日付ごとに登録済みの給食内容は残ります。`,
-                          confirmLabel: '削除',
-                          danger: true,
-                        })
-                      ) {
-                        store.removeLunchMenuSheet(sheet.id)
-                        if (lunchSheetView?.id === sheet.id) setLunchSheetView(null)
-                      }
-                    }}
-                    className="p-2 text-slate-400 active:text-red-500"
-                  >
-                    <TrashIcon width={18} height={18} />
-                  </button>
+                  ) : (
+                    <div className="border-t border-slate-200 px-3 py-6 text-center text-xs text-slate-400">画像を同期しています。</div>
+                  )}
                 </div>
               ))}
+              <p className="text-center text-xs text-slate-400">横スワイプでページ切替・タップで拡大</p>
             </div>
-          </div>
-        )}
+          ) : (
+            <button
+              type="button"
+              onClick={() => lunchRef.current?.click()}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 py-5 text-sm font-semibold text-slate-400 active:bg-slate-50"
+            >
+              <CameraIcon width={20} height={20} /> 登録した画像・PDFはまだありません
+            </button>
+          )}
+        </div>
 
         <Field label="給食メモ（手入力・修正）" hint="献立提案時、給食と主菜・食材が被らないようAIが考慮します。">
           <input
