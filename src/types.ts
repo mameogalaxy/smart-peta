@@ -66,12 +66,29 @@ export interface CalendarEvent {
   remind: boolean
   /** 通知の何分前か（.ics追加時に使用）。未設定は10分前 */
   remindMinutes?: number
-  /** 担当の家族メンバーID */
+  /** 担当の家族メンバーID（後方互換: 単一。複数は assignees を使う） */
   assignee?: string
+  /** 担当の家族メンバーID（複数選択可）。'*' は全員。 */
+  assignees?: string[]
   /** くり返し登録した予定をまとめる識別子（一括削除に使用） */
   seriesId?: string
   done: boolean
   createdAt: number
+}
+
+/** 全員を表す担当の特別値 */
+export const ALL_MEMBERS = '*'
+
+/** 予定の担当メンバーID配列を取り出す（旧 assignee 単一にも対応） */
+export function eventAssignees(e: { assignee?: string; assignees?: string[] }): string[] {
+  if (e.assignees && e.assignees.length) return e.assignees
+  return e.assignee ? [e.assignee] : []
+}
+
+/** 指定メンバーがこの予定の対象か（全員 '*' は常に対象） */
+export function eventMatchesMember(e: { assignee?: string; assignees?: string[] }, memberId: string): boolean {
+  const list = eventAssignees(e)
+  return list.includes(ALL_MEMBERS) || list.includes(memberId)
 }
 
 /** レシピ */

@@ -1,12 +1,28 @@
 const PDF_MAX_PAGES = 20
 
-/** PDFを表示・保存用のJPEG画像へ変換する。 */
+// PDF.js は重いので単一ファイルへ同梱せず、必要になった時だけCDNから読み込む（初回表示を軽く保つ）。
+const PDFJS_VERSION = '6.0.227'
+const PDFJS_BASE = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}`
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let pdfjsPromise: Promise<any> | null = null
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function loadPdfjs(): Promise<any> {
+  if (!pdfjsPromise) {
+    pdfjsPromise = import(/* @vite-ignore */ `${PDFJS_BASE}/build/pdf.min.mjs`).then((pdfjs) => {
+      pdfjs.GlobalWorkerOptions.workerSrc = `${PDFJS_BASE}/build/pdf.worker.min.mjs`
+      return pdfjs
+    })
+  }
+  return pdfjsPromise
+}
+
+/** PDFを表示・保存用のJPEG画像へ変換する（PDF.jsはCDNから遅延読み込み）。 */
 export async function renderPdfPages(
   file: File,
   maxPages = PDF_MAX_PAGES,
 ): Promise<{ pages: string[]; totalPages: number }> {
-  const pdfjs = await import('pdfjs-dist')
-  pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
+  const pdfjs = await loadPdfjs()
 
   const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) })
   const pdf = await task.promise

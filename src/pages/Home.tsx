@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStore } from '../lib/store'
 import { Card, Badge, SectionTitle, EmptyState } from '../components/ui'
-import { allDocCategories, findDocCategory } from '../types'
+import { allDocCategories, findDocCategory, eventMatchesMember } from '../types'
 import type { CalendarEvent, DocItem } from '../types'
 import { formatJpDate, relativeDays, todayISO } from '../lib/util'
 import { QrModal } from '../components/QrModal'
@@ -32,7 +32,7 @@ export function Home() {
     const selfOnly = scope === 'self' && !!memberId
     return [...state.events]
       .filter((e) => !e.done && e.date >= today)
-      .filter((e) => !selfOnly || e.assignee === memberId)
+      .filter((e) => !selfOnly || (memberId ? eventMatchesMember(e, memberId) : true))
       .sort((a, b) => (a.date + (a.time ?? '')).localeCompare(b.date + (b.time ?? '')))
       .slice(0, 8)
   }, [state.events, today, scope, memberId])

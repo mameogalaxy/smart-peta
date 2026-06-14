@@ -2,12 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useStore } from '../lib/store'
 import { Card, Badge, Button, Modal, Field, inputClass, EmptyState, Spinner } from '../components/ui'
-import { allDocCategories, findDocCategory, type CalendarEvent, type DocCategory, type DocCategoryDefinition, type FamilyMember } from '../types'
+import { allDocCategories, findDocCategory, eventAssignees, eventMatchesMember, ALL_MEMBERS, type CalendarEvent, type DocCategory, type DocCategoryDefinition, type FamilyMember } from '../types'
 import { fileToScanData, isPdfDataUrl, formatJpDate, parseISO, relativeDays, todayISO, uid } from '../lib/util'
 import { type Repeat, REPEATS, buildRepeatDates } from '../lib/recurrence'
 import { CalendarIcon, CameraIcon, CheckIcon, PlusIcon, TrashIcon, ShareIcon, QrIcon } from '../components/icons'
 import { CategoryIcon } from '../components/CategoryIcon'
 import { Avatar } from '../components/Avatar'
+import { AssigneePicker } from '../components/AssigneePicker'
 import { QrModal } from '../components/QrModal'
 import { googleCalendarUrl, addToCalendarIcs } from '../lib/calendar'
 import { extractEventsFromImage, GeminiError } from '../lib/gemini'
@@ -24,13 +25,13 @@ export function Calendar() {
   const [photoMsg, setPhotoMsg] = useState('')
   const [pendingImage, setPendingImage] = useState<string | null>(null)
   const [photoInstruction, setPhotoInstruction] = useState('')
-  const [photoAssignee, setPhotoAssignee] = useState('')
+  const [photoAssignees, setPhotoAssignees] = useState<string[]>([])
 
   async function onPhotoEvents(file: File) {
     setPhotoMsg('')
     const small = await fileToScanData(file)
     setPhotoInstruction('')
-    setPhotoAssignee(filterMember === 'all' ? '' : filterMember)
+    setPhotoAssignees(filterMember === 'all' ? [] : [filterMember])
     setPendingImage(small)
   }
 
@@ -38,7 +39,7 @@ export function Calendar() {
     if (!pendingImage) return
     const img = pendingImage
     const instruction = photoInstruction.trim() || undefined
-    const assignee = photoAssignee || undefined
+    const assignees = photoAssignees.length ? photoAssignees : undefined
     setPendingImage(null)
     setScanningPhoto(true)
     setPhotoMsg('')
@@ -59,7 +60,7 @@ export function Calendar() {
         time: ev.time,
         note: ev.note,
         category: res.category,
-        assignee,
+        assignees,
         remind: true,
         remindMinutes: 10,
         done: false,
@@ -95,8 +96,10 @@ export function Calendar() {
   // 担当メンバーの色（カレンダーの印・一覧の色分けに使用）
   const memberColors = useMemo(() => new Map(state.family.map((f) => [f.id, f.color])), [state.family])
   function eventColor(e: CalendarEvent): string {
+    const list = eventAssignees(e).filter((id) => id !== ALL_MEMBERS)
+    // 担当が1人だけのときはその人の色、それ以外（全員/複数/未割当）はカテゴリ色
     return (
-      (e.assignee && memberColors.get(e.assignee)) ||
+      (list.length === 1 && memberColors.get(list[0])) ||
       findDocCategory(e.category, state.customDocCategories, state.hiddenDocCategoryIds).color ||
       '#3b82f6'
     )
@@ -125,7 +128,7 @@ export function Calendar() {
   const eventsByDate = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>()
     for (const e of state.events) {
-      if (filterMember !== 'all' && e.assignee !== filterMember) continue
+      if (filterMember !== 'all' && !eventMatchesMember(e, filterMember)) continue
       if (!map.has(e.date)) map.set(e.date, [])
       map.get(e.date)!.push(e)
     }
@@ -142,7 +145,7 @@ export function Calendar() {
     const ym = `${cursor.y}-${String(cursor.m + 1).padStart(2, '0')}`
     const list = state.events
       .filter((e) => e.date.startsWith(ym))
-      .filter((e) => filterMember === 'all' || e.assignee === filterMember)
+      .filter((e) => filterMember === 'all' || eventMatchesMember(e, filterMember))
       .sort((a, b) => (a.date + (a.time ?? '99')).localeCompare(b.date + (b.time ?? '99')))
     const map = new Map<string, CalendarEvent[]>()
     for (const e of list) {
@@ -350,7 +353,7 @@ export function Calendar() {
                       key={e.id}
                       e={e}
                       categories={categories}
-                      member={state.family.find((f) => f.id === e.assignee)}
+                      family={state.family}
                       onToggleDone={() => updateEvent(e.id, { done: !e.done })}
                       onEdit={() => setEditEvent(e)}
                       onAddCalendar={() => setCalEvent(e)}
@@ -373,7 +376,7 @@ export function Calendar() {
                 key={e.id}
                 e={e}
                 categories={categories}
-                member={state.family.find((f) => f.id === e.assignee)}
+                family={state.family}
                 onToggleDone={() => updateEvent(e.id, { done: !e.done })}
                 onEdit={() => setEditEvent(e)}
                 onAddCalendar={() => setCalEvent(e)}
@@ -397,27 +400,13 @@ export function Calendar() {
             )}
             {state.family.length > 0 && (
               <div>
-                <span className="mb-1 block text-sm font-semibold text-slate-600">担当（任意）</span>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => setPhotoAssignee('')}
-                    className={`rounded-full px-3 py-1.5 text-sm font-semibold ${photoAssignee === '' ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-500'}`}
-                  >
-                    家族全員
-                  </button>
-                  {state.family.map((f) => {
-                    const isSelf = f.id === state.settings.memberId
-                    return (
-                      <button
-                        key={f.id}
-                        onClick={() => setPhotoAssignee(f.id)}
-                        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold ${photoAssignee === f.id ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-500'}`}
-                      >
-                        <Avatar member={f} size={18} /> {isSelf ? `${f.name}(自分)` : f.name}
-                      </button>
-                    )
-                  })}
-                </div>
+                <span className="mb-1 block text-sm font-semibold text-slate-600">担当（任意・複数選択可）</span>
+                <AssigneePicker
+                  family={state.family}
+                  value={photoAssignees}
+                  onChange={setPhotoAssignees}
+                  memberId={state.settings.memberId}
+                />
               </div>
             )}
             <Field label="AIへの指示（任意）" hint="例: 提出期限だけ / 来週分だけ / 時間も入れて。空欄でもOK。">
@@ -448,7 +437,8 @@ export function Calendar() {
           date={selected}
           family={state.family}
           categories={categories}
-          defaultAssignee={filterMember === 'all' ? '' : filterMember}
+          defaultAssignees={filterMember === 'all' ? [] : [filterMember]}
+          memberId={state.settings.memberId}
           onClose={() => setAdding(false)}
           onSave={(events) => {
             addEvents(events)
@@ -588,7 +578,7 @@ function AddToCalendarSheet({
 function EventRow({
   e,
   categories,
-  member,
+  family,
   onToggleDone,
   onEdit,
   onAddCalendar,
@@ -596,14 +586,17 @@ function EventRow({
 }: {
   e: CalendarEvent
   categories: DocCategoryDefinition[]
-  member?: FamilyMember
+  family: FamilyMember[]
   onToggleDone: () => void
   onEdit: () => void
   onAddCalendar: () => void
   onDelete: () => void
 }) {
   const cat = categories.find((c) => c.id === e.category)
-  const accent = member?.color ?? cat?.color ?? '#3b82f6'
+  const ids = eventAssignees(e)
+  const everyone = ids.includes(ALL_MEMBERS)
+  const members = family.filter((f) => ids.includes(f.id))
+  const accent = (members.length === 1 && members[0].color) || cat?.color || '#3b82f6'
   return (
     <Card className="flex items-center gap-2 p-3">
       <span className="h-9 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: accent }} />
@@ -624,7 +617,17 @@ function EventRow({
           <Badge color={cat?.color}>{cat?.label}</Badge>
           {e.time && <span>{e.time}</span>}
           <span>{relativeDays(e.date)}</span>
-          {member && <Avatar member={member} size={16} />}
+          {everyone ? (
+            <span className="font-semibold text-slate-500">全員</span>
+          ) : (
+            members.length > 0 && (
+              <span className="flex -space-x-1">
+                {members.slice(0, 4).map((m) => (
+                  <Avatar key={m.id} member={m} size={16} />
+                ))}
+              </span>
+            )
+          )}
           {e.note && <span className="truncate">・{e.note}</span>}
         </div>
       </button>
@@ -646,14 +649,16 @@ function AddEventModal({
   date,
   family,
   categories,
-  defaultAssignee = '',
+  defaultAssignees = [],
+  memberId,
   onClose,
   onSave,
 }: {
   date: string
   family: FamilyMember[]
   categories: DocCategoryDefinition[]
-  defaultAssignee?: string
+  defaultAssignees?: string[]
+  memberId?: string
   onClose: () => void
   onSave: (events: CalendarEvent[]) => void
 }) {
@@ -661,7 +666,7 @@ function AddEventModal({
   const [d, setD] = useState(date)
   const [time, setTime] = useState('')
   const [category, setCategory] = useState<DocCategory>('other')
-  const [assignee, setAssignee] = useState<string>(defaultAssignee)
+  const [assignees, setAssignees] = useState<string[]>(defaultAssignees)
   const [remind, setRemind] = useState(true)
   const [repeat, setRepeat] = useState<Repeat>('none')
   const [count, setCount] = useState(8)
@@ -848,24 +853,8 @@ function AddEventModal({
         </div>
         {family.length > 0 && (
           <div>
-            <span className="mb-1 block text-sm font-semibold text-slate-600">担当（任意）</span>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setAssignee('')}
-                className={`rounded-full px-3 py-1.5 text-sm font-semibold ${assignee === '' ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-500'}`}
-              >
-                なし
-              </button>
-              {family.map((f) => (
-                <button
-                  key={f.id}
-                  onClick={() => setAssignee(f.id)}
-                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold ${assignee === f.id ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-500'}`}
-                >
-                  <Avatar member={f} size={18} /> {f.name}
-                </button>
-              ))}
-            </div>
+            <span className="mb-1 block text-sm font-semibold text-slate-600">担当（任意・複数選択可）</span>
+            <AssigneePicker family={family} value={assignees} onChange={setAssignees} memberId={memberId} />
           </div>
         )}
         <label className="flex items-start gap-2 text-sm font-semibold text-slate-600">
@@ -889,7 +878,7 @@ function AddEventModal({
               date,
               time: time || undefined,
               category,
-              assignee: assignee || undefined,
+              assignees: assignees.length ? assignees : undefined,
               seriesId,
               remind,
               done: false,

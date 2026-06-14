@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../lib/store'
 import { Modal, Button, Field, inputClass } from './ui'
-import { allDocCategories, type CalendarEvent, type DocCategory } from '../types'
+import { allDocCategories, eventAssignees, type CalendarEvent, type DocCategory } from '../types'
 import { CategoryIcon } from './CategoryIcon'
-import { Avatar } from './Avatar'
+import { AssigneePicker } from './AssigneePicker'
 import { useConfirm } from '../lib/confirm'
 import { type Repeat, REPEATS, buildRepeatDates } from '../lib/recurrence'
 import { formatJpDate, uid } from '../lib/util'
@@ -17,7 +17,7 @@ export function EventEditModal({ event, onClose }: { event: CalendarEvent | null
   const [date, setDate] = useState('')
   const [time, setTime] = useState('')
   const [category, setCategory] = useState<DocCategory>('other')
-  const [assignee, setAssignee] = useState<string>('')
+  const [assignees, setAssignees] = useState<string[]>([])
   const [done, setDone] = useState(false)
   const [repeat, setRepeat] = useState<Repeat>('none')
   const [count, setCount] = useState(8)
@@ -28,7 +28,7 @@ export function EventEditModal({ event, onClose }: { event: CalendarEvent | null
       setDate(event.date)
       setTime(event.time ?? '')
       setCategory(event.category)
-      setAssignee(event.assignee ?? '')
+      setAssignees(eventAssignees(event))
       setDone(event.done)
       setRepeat('none')
       setCount(8)
@@ -47,7 +47,8 @@ export function EventEditModal({ event, onClose }: { event: CalendarEvent | null
       date,
       time: time || undefined,
       category,
-      assignee: assignee || undefined,
+      assignee: undefined,
+      assignees: assignees.length ? assignees : undefined,
       done,
     }
     if (repeat !== 'none') {
@@ -60,7 +61,7 @@ export function EventEditModal({ event, onClose }: { event: CalendarEvent | null
         date: d,
         time: base.time,
         category,
-        assignee: base.assignee,
+        assignees: base.assignees,
         seriesId,
         remind: event.remind,
         remindMinutes: event.remindMinutes,
@@ -107,24 +108,8 @@ export function EventEditModal({ event, onClose }: { event: CalendarEvent | null
 
         {state.family.length > 0 && (
           <div>
-            <span className="mb-1 block text-sm font-semibold text-slate-600">担当</span>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setAssignee('')}
-                className={`rounded-full px-3 py-1.5 text-sm font-semibold ${assignee === '' ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-500'}`}
-              >
-                なし
-              </button>
-              {state.family.map((f) => (
-                <button
-                  key={f.id}
-                  onClick={() => setAssignee(f.id)}
-                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold ${assignee === f.id ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-500'}`}
-                >
-                  <Avatar member={f} size={18} /> {f.name}
-                </button>
-              ))}
-            </div>
+            <span className="mb-1 block text-sm font-semibold text-slate-600">担当（複数選択可）</span>
+            <AssigneePicker family={state.family} value={assignees} onChange={setAssignees} memberId={state.settings.memberId} />
           </div>
         )}
 
