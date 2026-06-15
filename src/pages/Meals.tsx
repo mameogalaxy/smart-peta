@@ -4,7 +4,7 @@ import { Card, Button, Field, inputClass, Spinner, EmptyState, Badge, Modal } fr
 import { MealIcon, SparkleIcon, CartIcon, TrashIcon, CameraIcon, PlusIcon, CloseIcon, CheckIcon, DownloadIcon } from '../components/icons'
 import { suggestDinner, scanLunchMenu, scanFridge, GeminiError, type MealSuggestion } from '../lib/gemini'
 import { demoDinner, demoLunchMenu, demoFridge } from '../lib/demo'
-import { addDaysISO, downscaleImage, fileToDataUrl, fileToScanData, formatJpDate, saveImagesToDevice, todayISO, uid } from '../lib/util'
+import { addDaysISO, downscaleImage, fileToDataUrl, formatJpDate, saveImagesToDevice, todayISO, uid } from '../lib/util'
 import type { MealCourse, Recipe } from '../types'
 import { useConfirm } from '../lib/confirm'
 import { renderPdfPages } from '../lib/pdf'
@@ -19,6 +19,20 @@ const COURSE_OPTIONS: { value: MealCourse; label: string }[] = [
   { value: 'side', label: '副菜' },
   { value: 'soup', label: '汁物' },
 ]
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timeoutId = 0
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutId = window.setTimeout(() => reject(new Error(message)), ms)
+      }),
+    ])
+  } finally {
+    window.clearTimeout(timeoutId)
+  }
+}
 
 function courseLabel(course: MealCourse): string {
   return COURSE_OPTIONS.find((option) => option.value === course)?.label ?? course
@@ -38,6 +52,7 @@ export function Meals() {
   const lunchRef = useRef<HTMLInputElement>(null)
   const [scanningLunch, setScanningLunch] = useState(false)
   const [lunchMsg, setLunchMsg] = useState('')
+  const [lunchProgress, setLunchProgress] = useState('')
   const [lunchSheetView, setLunchSheetView] = useState<LunchMenuSheet | null>(null)
   const [lunchLightbox, setLunchLightbox] = useState<string | null>(null)
   const [savingLunchImages, setSavingLunchImages] = useState(false)
@@ -120,14 +135,24 @@ export function Meals() {
 
   async function onLunchFiles(files: FileList) {
     setLunchMsg('')
+    setLunchProgress('画像・PDFを準備しています…')
     setScanningLunch(true)
+    const sheetId = uid()
+    const savedPages: string[] = []
+    let sourceSaved = false
     try {
       const scanInputs: string[] = []
-      const savedPages: string[] = []
-      for (const file of Array.from(files)) {
+      const selectedFiles = Array.from(files)
+      for (let index = 0; index < selectedFiles.length; index++) {
+        const file = selectedFiles[index]
+        setLunchProgress(`画像・PDFを準備しています（${index + 1}/${selectedFiles.length}）`)
         if (file.type === 'application/pdf') {
-          scanInputs.push(await fileToScanData(file))
-          const rendered = await renderPdfPages(file, 31)
+          const rendered = await withTimeout(
+            renderPdfPages(file, 20),
+            60_000,
+            'PDFの準備が60秒以内に完了しませんでした。通信状態を確認して再度お試しください。',
+          )
+          scanInputs.push(...rendered.pages)
           savedPages.push(...rendered.pages)
         } else {
           const raw = await fileToDataUrl(file)
@@ -136,9 +161,22 @@ export function Meals() {
           savedPages.push(image)
         }
       }
+      if (!savedPages.length) throw new Error('読み取れる画像またはPDFページがありませんでした。')
+
+      const fallbackTitle = `${Number(date.slice(0, 4))}年${Number(date.slice(5, 7))}月 給食献立表`
+      store.addLunchMenuSheet({
+        id: sheetId,
+        title: fallbackTitle,
+        images: savedPages,
+        itemCount: 0,
+        createdAt: Date.now(),
+      })
+      sourceSaved = true
+      setLunchProgress(`AIで1か月分を読み取り中（${scanInputs.length}ページ）…`)
+
       let res
       try {
-        res = await scanLunchMenu(scanInputs, aiSettings, todayISO())
+        res = await scanLunchMenu(scanInputs, aiSettings, date)
       } catch (e) {
         if (e instanceof GeminiError && e.message === 'NO_KEY') res = demoLunchMenu()
         else throw e
@@ -149,24 +187,24 @@ export function Meals() {
       const endDate = dates[dates.length - 1]
       const title = startDate
         ? `${Number(startDate.slice(0, 4))}年${Number(startDate.slice(5, 7))}月 給食献立表`
-        : `給食献立表 ${formatJpDate(todayISO())}`
-      store.addLunchMenuSheet({
-        id: uid(),
+        : fallbackTitle
+      store.updateLunchMenuSheet(sheetId, {
         title,
-        images: savedPages,
         startDate,
         endDate,
         itemCount: res.items.length,
-        createdAt: Date.now(),
       })
-      const todayItem = res.items.find((i) => i.date === todayISO())
+      const selectedItem = res.items.find((i) => i.date === date)
       setLunchMsg(
-        `${res.items.length}日分の給食と献立表${savedPages.length}ページを登録しました。` + (todayItem ? `今日は「${todayItem.menu}」です。` : ''),
+        `${res.items.length}日分の給食と献立表${savedPages.length}ページを登録しました。` +
+          (selectedItem ? `${formatJpDate(date)}は「${selectedItem.menu}」です。` : ''),
       )
     } catch (e) {
-      setLunchMsg(e instanceof Error ? e.message : '読み取りに失敗しました。')
+      const message = e instanceof Error ? e.message : '読み取りに失敗しました。'
+      setLunchMsg(sourceSaved ? `画像・PDFは保存しましたが、献立のAI読み取りに失敗しました。${message}` : message)
     } finally {
       setScanningLunch(false)
+      setLunchProgress('')
     }
   }
 
@@ -331,9 +369,15 @@ export function Meals() {
             }}
           />
           <Button variant="soft" onClick={() => lunchRef.current?.click()} disabled={scanningLunch}>
-            {scanningLunch ? <Spinner /> : <CameraIcon width={18} height={18} />} 画像・PDFを登録
+            {scanningLunch ? <Spinner /> : <CameraIcon width={18} height={18} />} {scanningLunch ? '処理中…' : '画像・PDFを登録'}
           </Button>
         </div>
+
+        {scanningLunch && (
+          <p className="flex items-center gap-2 rounded-lg bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700">
+            <Spinner /> {lunchProgress}
+          </p>
+        )}
 
         {schoolLunch ? (
           <div className="flex items-start gap-2 rounded-xl bg-amber-50 p-3">

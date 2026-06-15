@@ -3,6 +3,7 @@ import { splitDataUrl } from './util'
 import { recordUsage } from './usage'
 
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models'
+const REQUEST_TIMEOUT_MS = 60_000
 
 export class GeminiError extends Error {
   /** 一時的エラー（503/429/500/ネットワーク）。別キーへのフォールバック対象。 */
@@ -38,10 +39,22 @@ async function callModel(
   const backoffs = [700, 1500]
   for (let attempt = 0; ; attempt++) {
     let res: Response
+    const controller = new AbortController()
+    const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
     try {
-      res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        signal: controller.signal,
+      })
     } catch {
+      if (controller.signal.aborted) {
+        throw new GeminiError('AI読み取りが60秒以内に完了しませんでした。画像を減らすか、通信状態を確認して再度お試しください。')
+      }
       throw transientErr('ネットワークエラー: Gemini に接続できませんでした。')
+    } finally {
+      window.clearTimeout(timeoutId)
     }
 
     if (res.ok) {

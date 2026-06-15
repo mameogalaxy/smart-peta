@@ -169,6 +169,7 @@ interface StoreApi {
   upsertMeal: (m: MealPlan) => void
   removeMeal: (id: string) => void
   addLunchMenuSheet: (sheet: LunchMenuSheet) => void
+  updateLunchMenuSheet: (id: string, patch: Partial<LunchMenuSheet>) => void
   removeLunchMenuSheet: (id: string) => void
   addMealMood: (mood: string) => void
   removeMealMood: (mood: string) => void
@@ -615,6 +616,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }),
       removeMeal: (id) => patch((s) => ({ ...s, meals: s.meals.filter((m) => m.id !== id) })),
       addLunchMenuSheet: (sheet) => patch((s) => ({ ...s, lunchMenuSheets: [sheet, ...s.lunchMenuSheets] })),
+      updateLunchMenuSheet: (id, sheetPatch) =>
+        patch((s) => ({
+          ...s,
+          lunchMenuSheets: s.lunchMenuSheets.map((sheet) => (sheet.id === id ? { ...sheet, ...sheetPatch } : sheet)),
+        })),
       removeLunchMenuSheet: (id) => patch((s) => ({ ...s, lunchMenuSheets: s.lunchMenuSheets.filter((sheet) => sheet.id !== id) })),
       addMealMood: (mood) =>
         patch((s) => {
