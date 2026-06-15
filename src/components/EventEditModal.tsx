@@ -7,6 +7,7 @@ import { AssigneePicker } from './AssigneePicker'
 import { useConfirm } from '../lib/confirm'
 import { type Repeat, REPEATS, buildRepeatDates } from '../lib/recurrence'
 import { formatJpDate, uid } from '../lib/util'
+import { EventImagePicker } from './EventImagePicker'
 
 /** 既存の予定を編集・削除するシート（ホーム/カレンダーから共通利用） */
 export function EventEditModal({ event, onClose }: { event: CalendarEvent | null; onClose: () => void }) {
@@ -21,6 +22,7 @@ export function EventEditModal({ event, onClose }: { event: CalendarEvent | null
   const [done, setDone] = useState(false)
   const [repeat, setRepeat] = useState<Repeat>('none')
   const [count, setCount] = useState(8)
+  const [images, setImages] = useState<string[]>([])
 
   useEffect(() => {
     if (event) {
@@ -32,6 +34,7 @@ export function EventEditModal({ event, onClose }: { event: CalendarEvent | null
       setDone(event.done)
       setRepeat('none')
       setCount(8)
+      setImages(event.images ?? [])
     }
   }, [event])
 
@@ -47,6 +50,7 @@ export function EventEditModal({ event, onClose }: { event: CalendarEvent | null
       date,
       time: time || undefined,
       category,
+      images: images.length ? images : undefined,
       assignee: undefined,
       assignees: assignees.length ? assignees : undefined,
       done,
@@ -61,6 +65,7 @@ export function EventEditModal({ event, onClose }: { event: CalendarEvent | null
         date: d,
         time: base.time,
         category,
+        images: base.images,
         assignees: base.assignees,
         seriesId,
         remind: event.remind,
@@ -89,6 +94,8 @@ export function EventEditModal({ event, onClose }: { event: CalendarEvent | null
             <input type="time" className={inputClass} value={time} onChange={(e) => setTime(e.target.value)} />
           </Field>
         </div>
+
+        <EventImagePicker images={images} onChange={setImages} />
 
         <div>
           <span className="mb-1 block text-sm font-semibold text-slate-600">分類</span>

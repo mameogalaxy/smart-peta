@@ -62,6 +62,8 @@ export interface CalendarEvent {
   category: DocCategory
   /** 紐づく書類ID（あれば） */
   docId?: string
+  /** 予定に添付した写真・PDFページ */
+  images?: string[]
   /** 通知リマインダーを有効にするか */
   remind: boolean
   /** 通知の何分前か（.ics追加時に使用）。未設定は10分前 */

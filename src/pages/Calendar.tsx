@@ -14,6 +14,7 @@ import { googleCalendarUrl, addToCalendarIcs } from '../lib/calendar'
 import { extractEventsFromImage, GeminiError } from '../lib/gemini'
 import { demoScan } from '../lib/demo'
 import { EventEditModal } from '../components/EventEditModal'
+import { EventImagePicker } from '../components/EventImagePicker'
 
 const WEEK = ['日', '月', '火', '水', '木', '金', '土']
 
@@ -60,6 +61,7 @@ export function Calendar() {
         time: ev.time,
         note: ev.note,
         category: res.category,
+        images: [img],
         assignees,
         remind: true,
         remindMinutes: 10,
@@ -610,6 +612,7 @@ function EventRow({
         <CheckIcon width={16} height={16} />
       </button>
       <button onClick={onEdit} className="min-w-0 flex-1 text-left">
+        {e.images?.[0] && <img src={e.images[0]} alt="" className="mb-2 h-20 w-full rounded-lg object-cover ring-1 ring-slate-200" />}
         <p className={`truncate font-semibold ${e.done ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
           {e.title}
         </p>
@@ -671,6 +674,7 @@ function AddEventModal({
   const [repeat, setRepeat] = useState<Repeat>('none')
   const [count, setCount] = useState(8)
   const [dateMode, setDateMode] = useState<'dates' | 'repeat'>('dates')
+  const [images, setImages] = useState<string[]>([])
   const [selectedDates, setSelectedDates] = useState<Set<string>>(() => new Set([date]))
   const [dateCursor, setDateCursor] = useState(() => {
     const initial = parseISO(date) ?? new Date()
@@ -705,6 +709,7 @@ function AddEventModal({
         <Field label="予定名">
           <input className={inputClass} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="授業参観、ゴミ出し など" autoFocus />
         </Field>
+        <EventImagePicker images={images} onChange={setImages} />
         <div>
           <span className="mb-1 block text-sm font-semibold text-slate-600">登録方法</span>
           <div className="grid grid-cols-2 rounded-lg bg-slate-100 p-1">
@@ -878,6 +883,7 @@ function AddEventModal({
               date,
               time: time || undefined,
               category,
+              images: images.length ? images : undefined,
               assignees: assignees.length ? assignees : undefined,
               seriesId,
               remind,

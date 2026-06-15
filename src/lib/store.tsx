@@ -59,6 +59,9 @@ function stripImages(col: SyncedKey, raw: unknown[]): unknown[] {
   if (col === 'lunchMenuSheets') {
     return (raw as LunchMenuSheet[]).map(({ images: _images, ...rest }) => rest)
   }
+  if (col === 'events') {
+    return (raw as CalendarEvent[]).map(({ images: _images, ...rest }) => rest)
+  }
   return raw
 }
 
@@ -218,9 +221,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const remoteDocImages = useRef<Map<string, string[]>>(new Map())
   /** 家族から共有された給食献立表画像（sheetId -> pages） */
   const remoteLunchImages = useRef<Map<string, string[]>>(new Map())
+  /** 家族から共有された予定画像（eventId -> pages） */
+  const remoteEventImages = useRef<Map<string, string[]>>(new Map())
   /** 各書類画像の最終同期シグネチャ（再送/エコー防止） */
   const imgPushed = useRef<Record<string, string>>({})
   const lunchImgPushed = useRef<Record<string, string>>({})
+  const eventImgPushed = useRef<Record<string, string>>({})
   /** 家族から共有されたAI設定（APIキー・モデル）。自分のキーが無いときの補完に使う。 */
   const [cloudAI, setCloudAI] = useState<Partial<Settings>>({})
 
@@ -278,6 +284,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         return { ...s, lunchMenuSheets: remote }
       }
+      if (col === 'events') {
+        const localById = new Map(s.events.map((event) => [event.id, event]))
+        const remote = (items as CalendarEvent[]).map((event) => {
+          const local = localById.get(event.id)
+          const remoteImages = remoteEventImages.current.get(event.id)
+          const images = local?.images?.length ? local.images : remoteImages
+          if (remoteImages?.length && !local?.images?.length) eventImgPushed.current[event.id] = imgSig(remoteImages)
+          return { ...event, images }
+        })
+        if (doMerge) {
+          const byId = new Map<string, CalendarEvent>(remote.map((event) => [event.id, event]))
+          for (const event of s.events) if (!byId.has(event.id)) byId.set(event.id, event)
+          return { ...s, events: [...byId.values()] }
+        }
+        return { ...s, events: remote }
+      }
       if (col === 'hiddenDocCategoryIds' || col === 'customMealMoods') {
         const remote = items.filter((x): x is string => typeof x === 'string')
         const local = col === 'hiddenDocCategoryIds' ? s.hiddenDocCategoryIds : s.customMealMoods
@@ -306,8 +328,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setCloudAI({})
       remoteDocImages.current = new Map()
       remoteLunchImages.current = new Map()
+      remoteEventImages.current = new Map()
       imgPushed.current = {}
       lunchImgPushed.current = {}
+      eventImgPushed.current = {}
       return
     }
     let cancelled = false
@@ -338,7 +362,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             (snap) => {
               const imgs = new Map<string, string[]>()
               const lunchImgs = new Map<string, string[]>()
+              const eventImgs = new Map<string, string[]>()
               snap.forEach((docu) => {
+                if (docu.id.startsWith('eventimg_')) {
+                  const a = (docu.data() as { images?: string[] }).images
+                  if (a && a.length) eventImgs.set(docu.id.slice(9), a)
+                  return
+                }
                 if (docu.id.startsWith('lunchimg_')) {
                   const a = (docu.data() as { images?: string[] }).images
                   if (a && a.length) lunchImgs.set(docu.id.slice(9), a)
@@ -350,6 +380,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               })
               remoteDocImages.current = imgs
               remoteLunchImages.current = lunchImgs
+              remoteEventImages.current = eventImgs
               setState((s) => {
                 let changed = false
                 const docs = s.docs.map((d) => {
@@ -368,7 +399,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                   changed = true
                   return { ...sheet, images }
                 })
-                return changed ? { ...s, docs, lunchMenuSheets } : s
+                const events = s.events.map((event) => {
+                  if (event.images?.length) return event
+                  const images = eventImgs.get(event.id)
+                  if (!images?.length) return event
+                  eventImgPushed.current[event.id] = imgSig(images)
+                  changed = true
+                  return { ...event, images }
+                })
+                return changed ? { ...s, docs, lunchMenuSheets, events } : s
               })
             },
             () => {},
@@ -402,8 +441,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       lastSync.current = {}
       remoteDocImages.current = new Map()
       remoteLunchImages.current = new Map()
+      remoteEventImages.current = new Map()
       imgPushed.current = {}
       lunchImgPushed.current = {}
+      eventImgPushed.current = {}
       setCloudAI({})
     }
   }, [cfgStr, hid, applyRemote])
@@ -469,6 +510,37 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       cancelled = true
     }
   }, [cloud.status, hid, state.lunchMenuSheets])
+
+  // 送信：予定の添付画像を世帯へ共有
+  useEffect(() => {
+    if (cloud.status !== 'on' || !hid) return
+    let cancelled = false
+    ;(async () => {
+      for (const event of state.events) {
+        const images = event.images ?? []
+        if (!images.length) continue
+        const sig = imgSig(images)
+        if (eventImgPushed.current[event.id] === sig) continue
+        eventImgPushed.current[event.id] = sig
+        try {
+          const compressed = await Promise.all(images.map((image) => compressForShare(image)))
+          if (cancelled) return
+          await setDoc(fsDoc(getDb(), 'households', hid, 'data', `eventimg_${event.id}`), { images: compressed })
+        } catch {
+          // 容量超過/オフライン時も、この端末では閲覧可能
+        }
+      }
+      for (const id of Object.keys(eventImgPushed.current)) {
+        if (!state.events.some((event) => event.id === id && event.images?.length)) {
+          delete eventImgPushed.current[id]
+          deleteDoc(fsDoc(getDb(), 'households', hid, 'data', `eventimg_${id}`)).catch(() => {})
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [cloud.status, hid, state.events])
 
   // 送信：APIキー・モデルを家族に共有（shareAiWithFamily が ON のときだけ書き込む）
   useEffect(() => {
@@ -717,6 +789,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           mergeCols.current.clear()
           imgPushed.current = {}
           lunchImgPushed.current = {}
+          eventImgPushed.current = {}
           setState(next)
           return true
         } catch {
