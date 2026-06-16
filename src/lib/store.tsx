@@ -87,8 +87,8 @@ export type CloudStatus = 'off' | 'connecting' | 'on' | 'error'
 
 function stripImages(col: SyncedKey, raw: unknown[]): unknown[] {
   if (col === 'docs') {
-    // 画像は items とは別（households/{hid}/data/img_{docId}）に同期するため、本文からは外す
-    return (raw as DocItem[]).map(({ image: _img, images: _imgs, ...rest }) => rest)
+    // 画像と所有フラグ(scannedHere=ローカル専用)は items とは別管理なので本文からは外す
+    return (raw as DocItem[]).map(({ image: _img, images: _imgs, scannedHere: _sh, ...rest }) => rest)
   }
   if (col === 'lunchMenuSheets') {
     return (raw as LunchMenuSheet[]).map(({ images: _images, ...rest }) => rest)
@@ -103,6 +103,23 @@ function stripImages(col: SyncedKey, raw: unknown[]): unknown[] {
 function docImageList(d: DocItem): string[] {
   if (d.images && d.images.length) return d.images
   return d.image ? [d.image] : []
+}
+
+/**
+ * 書類に表示する画像をクラウド受信内容で調整する。
+ * - 自分でスキャンした書類(scannedHere)はローカル高画質を維持（クラウドで上書きしない）
+ * - 受信側の書類はクラウドのページ画像に常に追従（ページ数のズレを解消）
+ * 返り値 changed=true のときだけ image/images を差し替える。
+ */
+function reconcileDocImages(d: DocItem, remote: string[] | undefined): { image?: string; images?: string[]; changed: boolean } {
+  const local = docImageList(d)
+  const keep = { image: d.image, images: d.images, changed: false }
+  // 自分でスキャンした書類はローカル高画質を維持（クラウドで上書きしない）
+  if (d.scannedHere && local.length) return keep
+  if (!remote || !remote.length) return keep
+  // クラウドのページ数がローカルより多い時だけ追従（所有者のページを減らさず、受信側のページ欠けを解消）
+  if (remote.length <= local.length) return keep
+  return { image: remote[0], images: remote.length > 1 ? remote : undefined, changed: true }
 }
 /** 画像セットの簡易シグネチャ（変化検知用） */
 function imgSig(list: string[]): string {
@@ -288,14 +305,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const localById = new Map(s.docs.map((d) => [d.id, d]))
         const remote = (items as DocItem[]).map((d) => {
           const local = localById.get(d.id)
+          // 本文(items)には画像が無いので、ローカルの画像と所有フラグを引き継いでから調整
+          const base: DocItem = { ...d, image: local?.image, images: local?.images, scannedHere: local?.scannedHere }
           const ri = remoteDocImages.current.get(d.id)
-          const hasLocalImg = !!(local?.image || (local?.images && local.images.length))
-          if (ri && !hasLocalImg) imgPushed.current[d.id] = imgSig(ri)
-          return {
-            ...d,
-            image: local?.image ?? (hasLocalImg ? undefined : ri?.[0]),
-            images: local?.images ?? (hasLocalImg ? undefined : ri && ri.length > 1 ? ri : undefined),
-          }
+          const res = reconcileDocImages(base, ri)
+          if (res.changed && ri) imgPushed.current[d.id] = imgSig(ri)
+          return { ...base, image: res.image, images: res.images }
         })
         if (doMerge) {
           const byId = new Map<string, DocItem>(remote.map((d) => [d.id, d]))
@@ -441,12 +456,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               setState((s) => {
                 let changed = false
                 const docs = s.docs.map((d) => {
-                  if (d.image || (d.images && d.images.length)) return d
                   const r = imgs.get(d.id)
-                  if (!r || !r.length) return d
-                  imgPushed.current[d.id] = imgSig(r)
+                  const res = reconcileDocImages(d, r)
+                  if (!res.changed) return d
+                  if (r) imgPushed.current[d.id] = imgSig(r)
                   changed = true
-                  return { ...d, image: r[0], images: r.length > 1 ? r : undefined }
+                  return { ...d, image: res.image, images: res.images }
                 })
                 const lunchMenuSheets = s.lunchMenuSheets.map((sheet) => {
                   if (sheet.images?.length) return sheet

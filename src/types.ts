@@ -47,6 +47,8 @@ export interface DocItem {
   image?: string
   /** 複数ページの画像（PDFはページごとにJPEG化）。詳細でスライド表示。ローカル保存 */
   images?: string[]
+  /** この端末でスキャンした書類か（=画像の所有者）。クラウドには送らないローカル専用フラグ */
+  scannedHere?: boolean
   createdAt: number
 }
 

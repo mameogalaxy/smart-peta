@@ -206,6 +206,7 @@ export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => voi
       summary: result.summary,
       image,
       images: imgs.length > 1 ? imgs : undefined,
+      scannedHere: true,
       createdAt: now,
     })
 
