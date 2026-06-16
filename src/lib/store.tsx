@@ -38,7 +38,41 @@ import { DEFAULT_FIREBASE_CONFIG, HAS_DEFAULT_FIREBASE } from '../firebaseConfig
 
 const STORAGE_KEY = 'smart-peta:v1'
 
-/** 設定の貼り付け config（あれば）→ 無ければ既定の共通 config を使う */
+/**
+ * localStorage へ保存する。容量超過(QuotaExceeded)で全消失しないよう、
+ * 失敗したら画像を段階的に外して「本文データだけでも必ず保存」する。
+ * （書類・給食の画像はクラウドに別保存され、再接続で復元される）
+ */
+function persistState(state: AppState): void {
+  const attempts: (() => AppState)[] = [
+    () => state,
+    // 1) 給食献立表の画像を外す（PDF多ページが最も重い）
+    () => ({ ...state, lunchMenuSheets: state.lunchMenuSheets.map((s) => ({ ...s, images: [] })) }),
+    // 2) さらに書類の画像も外す
+    () => ({
+      ...state,
+      lunchMenuSheets: state.lunchMenuSheets.map((s) => ({ ...s, images: [] })),
+      docs: state.docs.map(({ image: _i, images: _is, ...d }) => d),
+    }),
+    // 3) レシピ画像も外して本文だけ確実に残す
+    () => ({
+      ...state,
+      lunchMenuSheets: state.lunchMenuSheets.map((s) => ({ ...s, images: [] })),
+      docs: state.docs.map(({ image: _i, images: _is, ...d }) => d),
+      recipes: state.recipes.map(({ image: _i, ...r }) => r),
+    }),
+  ]
+  for (const make of attempts) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(make()))
+      return
+    } catch {
+      /* 容量超過 → 次の段階（画像を外す）で再試行 */
+    }
+  }
+}
+
+
 function resolveConfig(raw?: string): Record<string, unknown> | null {
   const fromSetting = parseFirebaseConfig(raw)
   if (fromSetting) return fromSetting
@@ -607,11 +641,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       first.current = false
       return
     }
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-    } catch {
-      /* 容量超過などは無視 */
-    }
+    persistState(state)
   }, [state])
 
   const api = useMemo<StoreApi>(() => {
