@@ -259,6 +259,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const remoteEventImages = useRef<Map<string, string[]>>(new Map())
   /** 各書類画像の最終同期シグネチャ（再送/エコー防止） */
   const imgPushed = useRef<Record<string, string>>({})
+  /** 各書類のクラウド側ページ数（減ったページの掃除用） */
+  const imgPageCount = useRef<Record<string, number>>({})
   const lunchImgPushed = useRef<Record<string, string>>({})
   const eventImgPushed = useRef<Record<string, string>>({})
   /** 家族から共有されたAI設定（APIキー・モデル）。自分のキーが無いときの補完に使う。 */
@@ -364,6 +366,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       remoteLunchImages.current = new Map()
       remoteEventImages.current = new Map()
       imgPushed.current = {}
+      imgPageCount.current = {}
       lunchImgPushed.current = {}
       eventImgPushed.current = {}
       return
@@ -397,6 +400,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               const imgs = new Map<string, string[]>()
               const lunchImgs = new Map<string, string[]>()
               const eventImgs = new Map<string, string[]>()
+              // 書類画像はページごとの個別ドキュメント（img_{docId}__p{i}）で受信し、後で結合する
+              const docPages = new Map<string, Map<number, string>>()
               snap.forEach((docu) => {
                 if (docu.id.startsWith('eventimg_')) {
                   const a = (docu.data() as { images?: string[] }).images
@@ -409,9 +414,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                   return
                 }
                 if (!docu.id.startsWith('img_')) return
+                const rest = docu.id.slice(4)
+                const sep = rest.indexOf('__p')
+                if (sep >= 0) {
+                  const docId = rest.slice(0, sep)
+                  const idx = Number(rest.slice(sep + 3))
+                  const image = (docu.data() as { image?: string }).image
+                  if (image && Number.isFinite(idx)) {
+                    if (!docPages.has(docId)) docPages.set(docId, new Map())
+                    docPages.get(docId)!.set(idx, image)
+                  }
+                  return
+                }
+                // 旧形式（1ドキュメントにまとめ）も後方互換で読む
                 const a = (docu.data() as { images?: string[] }).images
-                if (a && a.length) imgs.set(docu.id.slice(4), a)
+                if (a && a.length) imgs.set(rest, a)
               })
+              // ページ個別版は結合して旧形式を上書き
+              for (const [docId, pages] of docPages) {
+                const arr = [...pages.entries()].sort((x, y) => x[0] - y[0]).map(([, image]) => image)
+                if (arr.length) imgs.set(docId, arr)
+              }
               remoteDocImages.current = imgs
               remoteLunchImages.current = lunchImgs
               remoteEventImages.current = eventImgs
@@ -477,6 +500,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       remoteLunchImages.current = new Map()
       remoteEventImages.current = new Map()
       imgPushed.current = {}
+      imgPageCount.current = {}
       lunchImgPushed.current = {}
       eventImgPushed.current = {}
       setCloudAI({})
@@ -497,16 +521,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         try {
           const compressed = await Promise.all(list.map((x) => compressForShare(x)))
           if (cancelled) return
-          await setDoc(fsDoc(getDb(), 'households', hid, 'data', `img_${d.id}`), { images: compressed })
+          // ページごとに別ドキュメントへ保存（1ドキュメント=1MB制限を超えず、3枚目以降も確実に同期）
+          for (let i = 0; i < compressed.length; i++) {
+            await setDoc(fsDoc(getDb(), 'households', hid, 'data', `img_${d.id}__p${i}`), { image: compressed[i], i, docId: d.id })
+          }
+          // ページが減った分の掃除＋旧まとめ形式の削除（移行）
+          const prev = imgPageCount.current[d.id] ?? 0
+          for (let i = compressed.length; i < prev; i++) {
+            deleteDoc(fsDoc(getDb(), 'households', hid, 'data', `img_${d.id}__p${i}`)).catch(() => {})
+          }
+          imgPageCount.current[d.id] = compressed.length
+          deleteDoc(fsDoc(getDb(), 'households', hid, 'data', `img_${d.id}`)).catch(() => {})
         } catch {
-          // 1MB超過/オフライン等は共有をスキップ（本文は同期済み）
+          // オフライン等は共有をスキップ（本文は同期済み）。次回変更時に再送される
+          imgPushed.current[d.id] = ''
         }
       }
       // ローカルで削除された書類の画像はクラウドからも削除
       for (const id of Object.keys(imgPushed.current)) {
         if (!state.docs.some((d) => d.id === id)) {
+          const pages = imgPageCount.current[id] ?? 0
           delete imgPushed.current[id]
+          delete imgPageCount.current[id]
           deleteDoc(fsDoc(getDb(), 'households', hid, 'data', `img_${id}`)).catch(() => {})
+          for (let i = 0; i < pages; i++) {
+            deleteDoc(fsDoc(getDb(), 'households', hid, 'data', `img_${id}__p${i}`)).catch(() => {})
+          }
         }
       }
     })()
