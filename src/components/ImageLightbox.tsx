@@ -20,8 +20,20 @@ function clampScale(value: number): number {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, value))
 }
 
-/** 書類画像を全画面表示し、ピンチ・ドラッグ・ダブルタップで拡大する。 */
-export function ImageLightbox({ src, onClose }: { src: string | null; onClose: () => void }) {
+/** 書類画像を全画面表示し、ピンチ・ドラッグ・ダブルタップで拡大。複数枚は横スワイプ/矢印で切替。 */
+export function ImageLightbox({
+  src,
+  images,
+  index = 0,
+  onClose,
+}: {
+  src?: string | null
+  images?: string[] | null
+  index?: number
+  onClose: () => void
+}) {
+  const list = images && images.length ? images : src ? [src] : []
+  const [current, setCurrent] = useState(index)
   const [transform, setTransform] = useState<Transform>({ scale: 1, x: 0, y: 0 })
   const pointers = useRef(new Map<number, Point>())
   const gesture = useRef<{
@@ -32,22 +44,37 @@ export function ImageLightbox({ src, onClose }: { src: string | null; onClose: (
     y: number
   } | null>(null)
   const pan = useRef<{ pointerId: number; point: Point; x: number; y: number } | null>(null)
+  const swipeStart = useRef<{ x: number; y: number } | null>(null)
   const lastTap = useRef(0)
   const [saving, setSaving] = useState(false)
 
+  // 開き直し（src/images/index 変更）で先頭ページへ
+  useEffect(() => {
+    setCurrent(index)
+  }, [index, src, images])
+
+  const count = list.length
+  const srcCur = list[Math.min(current, count - 1)] ?? null
+
+  // ページ切替・開き直しで拡大状態をリセット
   useEffect(() => {
     setTransform({ scale: 1, x: 0, y: 0 })
     pointers.current.clear()
     gesture.current = null
     pan.current = null
+    swipeStart.current = null
     lastTap.current = 0
     setSaving(false)
-  }, [src])
+  }, [srcCur])
 
-  if (!src) return null
+  if (!srcCur) return null
 
   function reset() {
     setTransform({ scale: 1, x: 0, y: 0 })
+  }
+
+  function go(delta: number) {
+    setCurrent((c) => Math.min(count - 1, Math.max(0, c + delta)))
   }
 
   function beginGesture() {
@@ -61,6 +88,7 @@ export function ImageLightbox({ src, onClose }: { src: string | null; onClose: (
       y: transform.y,
     }
     pan.current = null
+    swipeStart.current = null
   }
 
   function onPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
@@ -70,6 +98,9 @@ export function ImageLightbox({ src, onClose }: { src: string | null; onClose: (
       beginGesture()
     } else if (pointers.current.size === 1 && transform.scale > 1) {
       pan.current = { pointerId: e.pointerId, point: { x: e.clientX, y: e.clientY }, x: transform.x, y: transform.y }
+    } else if (pointers.current.size === 1) {
+      // 等倍時は横スワイプでページ切替できるよう開始位置を記録
+      swipeStart.current = { x: e.clientX, y: e.clientY }
     }
   }
 
@@ -100,6 +131,15 @@ export function ImageLightbox({ src, onClose }: { src: string | null; onClose: (
   }
 
   function onPointerEnd(e: ReactPointerEvent<HTMLDivElement>) {
+    // 等倍時の横スワイプ → ページ切替
+    if (swipeStart.current && transform.scale <= 1.02 && count > 1) {
+      const dx = e.clientX - swipeStart.current.x
+      const dy = e.clientY - swipeStart.current.y
+      if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+        go(dx < 0 ? 1 : -1)
+      }
+    }
+    swipeStart.current = null
     pointers.current.delete(e.pointerId)
     gesture.current = null
     pan.current = null
@@ -113,7 +153,7 @@ export function ImageLightbox({ src, onClose }: { src: string | null; onClose: (
   function onDoubleTap() {
     const now = Date.now()
     if (now - lastTap.current < 300) {
-      setTransform((current) => (current.scale > 1 ? { scale: 1, x: 0, y: 0 } : { scale: 2.5, x: 0, y: 0 }))
+      setTransform((cur) => (cur.scale > 1 ? { scale: 1, x: 0, y: 0 } : { scale: 2.5, x: 0, y: 0 }))
       lastTap.current = 0
     } else {
       lastTap.current = now
@@ -129,7 +169,7 @@ export function ImageLightbox({ src, onClose }: { src: string | null; onClose: (
           onClick={async () => {
             setSaving(true)
             try {
-              await saveImagesToDevice([src], 'smartpita-image')
+              await saveImagesToDevice([srcCur], 'smartpita-image')
             } finally {
               setSaving(false)
             }
@@ -138,6 +178,7 @@ export function ImageLightbox({ src, onClose }: { src: string | null; onClose: (
         >
           <DownloadIcon width={18} height={18} /> {saving ? '保存中…' : '画像を保存'}
         </button>
+        {count > 1 && <span className="text-sm font-bold text-white/90">{current + 1} / {count}</span>}
         <button onClick={onClose} className="rounded-full bg-white/15 p-2 text-white" aria-label="閉じる">
           <CloseIcon width={22} height={22} />
         </button>
@@ -152,7 +193,7 @@ export function ImageLightbox({ src, onClose }: { src: string | null; onClose: (
         onClick={onDoubleTap}
       >
         <img
-          src={src}
+          src={srcCur}
           alt=""
           draggable={false}
           className="max-h-full max-w-full select-none object-contain"
@@ -162,6 +203,26 @@ export function ImageLightbox({ src, onClose }: { src: string | null; onClose: (
             transition: pointers.current.size ? 'none' : 'transform 120ms ease-out',
           }}
         />
+        {count > 1 && transform.scale <= 1.02 && current > 0 && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); go(-1) }}
+            className="absolute left-2 top-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-2xl text-white active:bg-white/25"
+            aria-label="前の画像"
+          >
+            ‹
+          </button>
+        )}
+        {count > 1 && transform.scale <= 1.02 && current < count - 1 && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); go(1) }}
+            className="absolute right-2 top-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-2xl text-white active:bg-white/25"
+            aria-label="次の画像"
+          >
+            ›
+          </button>
+        )}
         {transform.scale > 1 && (
           <button
             type="button"

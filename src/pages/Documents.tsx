@@ -34,7 +34,7 @@ export function Documents() {
   const [detail, setDetail] = useState<DocItem | null>(null)
   const [detailNote, setDetailNote] = useState('')
   const [detailAudienceIds, setDetailAudienceIds] = useState<string[]>([])
-  const [lightbox, setLightbox] = useState<string | null>(null)
+  const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null)
   const [showOcr, setShowOcr] = useState(false)
   const [reanalyzing, setReanalyzing] = useState(false)
   const [reanalyzeMsg, setReanalyzeMsg] = useState('')
@@ -410,7 +410,7 @@ export function Documents() {
                   <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto rounded-xl">
                     {imgs.map((src, i) => (
                       <div key={i} className="relative w-full shrink-0 snap-center">
-                        <button onClick={() => setLightbox(src)} className="block w-full">
+                        <button onClick={() => setLightbox({ images: imgs, index: i })} className="block w-full">
                           <img src={src} alt="" className="max-h-80 w-full rounded-xl object-contain ring-1 ring-slate-200" />
                         </button>
                         <span className="absolute left-2 top-2 rounded-full bg-slate-900/55 px-2 py-0.5 text-[11px] font-bold text-white">
@@ -596,7 +596,7 @@ export function Documents() {
         )}
       </Modal>
 
-      <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />
+      <ImageLightbox images={lightbox?.images ?? null} index={lightbox?.index ?? 0} onClose={() => setLightbox(null)} />
 
       <Modal open={categoryManagerOpen} onClose={() => setCategoryManagerOpen(false)} title="書類の分類を管理">
         <div className="space-y-4">

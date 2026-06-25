@@ -54,7 +54,7 @@ export function Meals() {
   const [lunchMsg, setLunchMsg] = useState('')
   const [lunchProgress, setLunchProgress] = useState('')
   const [lunchSheetView, setLunchSheetView] = useState<LunchMenuSheet | null>(null)
-  const [lunchLightbox, setLunchLightbox] = useState<string | null>(null)
+  const [lunchLightbox, setLunchLightbox] = useState<{ images: string[]; index: number } | null>(null)
   const [savingLunchImages, setSavingLunchImages] = useState(false)
   const fridgeRef = useRef<HTMLInputElement>(null)
   const [scanningFridge, setScanningFridge] = useState(false)
@@ -436,7 +436,7 @@ export function Meals() {
                         <button
                           key={index}
                           type="button"
-                          onClick={() => setLunchLightbox(image)}
+                          onClick={() => setLunchLightbox({ images: sheet.images, index })}
                           className="relative w-[88%] shrink-0 snap-center"
                         >
                           <img
@@ -879,7 +879,7 @@ export function Meals() {
                   <button
                     key={index}
                     type="button"
-                    onClick={() => setLunchLightbox(image)}
+                    onClick={() => setLunchLightbox({ images: lunchSheetView.images, index })}
                     className="relative w-full shrink-0 snap-center"
                   >
                     <img src={image} alt={`${lunchSheetView.title} ${index + 1}ページ`} className="max-h-[65vh] w-full rounded-xl object-contain ring-1 ring-slate-200" />
@@ -915,7 +915,7 @@ export function Meals() {
         )}
       </Modal>
 
-      <ImageLightbox src={lunchLightbox} onClose={() => setLunchLightbox(null)} />
+      <ImageLightbox images={lunchLightbox?.images ?? null} index={lunchLightbox?.index ?? 0} onClose={() => setLunchLightbox(null)} />
     </div>
   )
 }

@@ -7,7 +7,7 @@ import { downscaleImage, fileToDataUrl, saveImagesToDevice } from '../lib/util'
 
 export function EventImagePicker({ images, onChange }: { images: string[]; onChange: (images: string[]) => void }) {
   const inputRef = useRef<HTMLInputElement>(null)
-  const [lightbox, setLightbox] = useState<string | null>(null)
+  const [lightbox, setLightbox] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -60,7 +60,7 @@ export function EventImagePicker({ images, onChange }: { images: string[]; onCha
           <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
             {images.map((image, index) => (
               <div key={index} className="relative w-[82%] shrink-0 snap-center">
-                <button type="button" onClick={() => setLightbox(image)} className="block w-full">
+                <button type="button" onClick={() => setLightbox(index)} className="block w-full">
                   <img src={image} alt={`予定の添付 ${index + 1}`} className="h-48 w-full rounded-lg bg-white object-contain" />
                 </button>
                 <span className="absolute left-2 top-2 rounded-full bg-slate-900/60 px-2 py-0.5 text-[11px] font-bold text-white">
@@ -113,7 +113,7 @@ export function EventImagePicker({ images, onChange }: { images: string[]; onCha
         </button>
       )}
 
-      <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />
+      <ImageLightbox images={lightbox !== null ? images : null} index={lightbox ?? 0} onClose={() => setLightbox(null)} />
     </div>
   )
 }
